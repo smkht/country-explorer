@@ -253,32 +253,32 @@
       <!-- ====== COMPARE ====== -->
       <div class="rp-content hidden" id="compareContent">
         <div class="rp-section">
-          <p class="rp-desc">Head-to-head brand analysis with market share, regional presence, and competitive positioning.</p>
+          <p class="rp-desc" id="compareDesc">Head-to-head brand analysis with market share, regional presence, and competitive positioning.</p>
 
           <!-- Compare KPIs -->
           <div class="rp-kpi-grid" id="compareKpis" style="margin-bottom:14px"></div>
 
           <!-- Market Share Bars -->
           <div class="rp-table-section">
-            <div class="rp-table-title">📊 Market Share</div>
+            <div class="rp-table-title" id="compareShareTitle">📊 Market Share</div>
             <div id="compareShareBars" class="share-bars"></div>
           </div>
 
           <!-- Leaderboard -->
           <div class="rp-table-section">
-            <div class="rp-table-title">🏆 Brand Leaderboard</div>
+            <div class="rp-table-title" id="compareLeaderTitle">🏆 Brand Leaderboard</div>
             <table class="table" id="compareTable"></table>
           </div>
 
-          <!-- Regional Heatmap Grid -->
+          <!-- Regional Presence Matrix -->
           <div class="rp-table-section">
-            <div class="rp-table-title">🗺️ Regional Presence Matrix</div>
+            <div class="rp-table-title" id="compareMatrixTitle">🗺️ Regional Presence Matrix</div>
             <div id="compareMatrix" class="compare-matrix"></div>
           </div>
 
           <!-- Concentration Analysis -->
           <div class="rp-table-section">
-            <div class="rp-table-title">🎯 Concentration Analysis</div>
+            <div class="rp-table-title" id="compareConcentrationTitle">🎯 Concentration Analysis</div>
             <table class="table" id="compareConcentration"></table>
           </div>
 
@@ -286,6 +286,18 @@
           <div class="rp-table-section">
             <div class="rp-table-title">💡 Key Insights</div>
             <div id="compareInsights" class="compare-insights"></div>
+          </div>
+
+          <!-- ⚡ Guesstimate Side-by-Side Comparison -->
+          <div class="rp-table-section" id="compareGuesstimateSection" style="display:none">
+            <div class="rp-table-title">⚡ Brand Face-Off — Guesstimate</div>
+            <div id="compareGuesstimateContent"></div>
+          </div>
+
+          <!-- Region-specific deep-dive (shown when region selected) -->
+          <div class="rp-table-section" id="compareRegionDeepDive" style="display:none">
+            <div class="rp-table-title" id="compareRegionDeepTitle">📍 Region Deep Dive</div>
+            <div id="compareRegionDeepContent"></div>
           </div>
         </div>
       </div>
