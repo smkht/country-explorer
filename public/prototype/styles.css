@@ -169,6 +169,27 @@ body { font-family: var(--sans); background: var(--bg); color: var(--text); -web
 .export-info-label { color: var(--muted); font-weight: 500; }
 .rp-footnote { margin-top: 14px; font-size: 11px; color: var(--muted); }
 
+/* ── Compare tab ── */
+.share-bars { display: flex; flex-direction: column; gap: 6px; }
+.share-bar-row { display: flex; align-items: center; gap: 8px; }
+.share-bar-label { font-size: 11px; font-weight: 600; color: var(--text); min-width: 70px; white-space: nowrap; }
+.share-bar-track { flex: 1; height: 20px; background: var(--panel2); border-radius: 4px; overflow: hidden; position: relative; }
+.share-bar-fill { height: 100%; border-radius: 4px; transition: width 0.4s ease; display: flex; align-items: center; justify-content: flex-end; padding-right: 6px; }
+.share-bar-value { font-size: 10px; font-weight: 700; color: #fff; text-shadow: 0 1px 2px rgba(0,0,0,0.3); }
+.share-bar-count { font-size: 11px; color: var(--muted); font-weight: 600; min-width: 40px; text-align: right; font-variant-numeric: tabular-nums; }
+
+.compare-matrix { overflow-x: auto; }
+.compare-matrix table { width: 100%; border-collapse: collapse; font-size: 11px; }
+.compare-matrix th, .compare-matrix td { padding: 5px 4px; text-align: center; border-bottom: 1px solid var(--border); }
+.compare-matrix th { color: var(--muted); font-weight: 600; font-size: 9px; text-transform: uppercase; letter-spacing: 0.3px; }
+.compare-matrix th:first-child, .compare-matrix td:first-child { text-align: left; font-weight: 600; }
+.compare-matrix .cell-heat { border-radius: 3px; padding: 3px 5px; font-weight: 700; font-size: 10px; display: inline-block; min-width: 28px; }
+
+.compare-insights { display: flex; flex-direction: column; gap: 6px; }
+.insight-card { background: var(--panel2); border: 1px solid var(--border); border-radius: 8px; padding: 10px 12px; font-size: 12px; line-height: 1.5; color: var(--text); }
+.insight-card strong { color: var(--accent); }
+.insight-icon { margin-right: 6px; }
+
 /* ── Leaflet ── */
 .leaflet-container { font-family: var(--sans) !important; }
 .leaflet-popup-content-wrapper { border-radius: 10px !important; box-shadow: var(--shadow-lg) !important; border: 1px solid var(--border) !important; }
