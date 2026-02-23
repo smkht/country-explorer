@@ -46,7 +46,7 @@ const OnePager = () => {
           </div>
           <div className="text-right">
             <p className="text-[10px] font-medium" style={{ color: "hsl(220 10% 46%)" }}>Great Britain dataset</p>
-            <p className="text-[10px]" style={{ color: "hsl(220 10% 46%)" }}>6 brands · 5,718 locations · 9 regions · Feb 2026</p>
+            
           </div>
         </div>
 
@@ -54,7 +54,7 @@ const OnePager = () => {
         <div className="grid grid-cols-2 gap-x-5 gap-y-3">
           {/* 1. Product Concept */}
           <Section title="1. Product Concept">
-            <p className="mb-1">
+            <p className="mb-1">For: strategy & expansion teams at restaurant chains who need to understand competitor presence by region.
               <strong>For</strong> strategy & expansion teams at restaurant chains who need to understand competitor presence by region.
             </p>
             <p className="mb-1">
@@ -74,8 +74,8 @@ const OnePager = () => {
             <p className="mb-1">
               Built in Lovable (React + Tailwind). Landing page (hero, problem cards, feature tiles with screenshots, data proof, CTA) + explorer app with 4 tabs: <strong>Overview</strong> (hex map, filters, region drilldown), <strong>Deep Review</strong> (heatmap + guesstimate), <strong>Compare</strong> (market share, regional matrix, concentration, auto-insights), <strong>Export</strong> (CSV/GeoJSON).
             </p>
-            <p>
-              Phase 2 previewed: heatmap mode (red/green competitive win-lose) and guesstimate engine (saturation scores, gap analysis, expansion advice) — shown as toggles in Deep Review tab.
+            <p>Phase 2 of MVP previewed: heatmap mode (red/green competitive win-lose) and guesstimate engine (saturation scores, gap analysis, expansion advice) — shown as toggles in Deep Review tab.
+
             </p>
           </Section>
 
