@@ -63,10 +63,6 @@ const OnePager = () => {
             <p className="mb-1">
               <strong>Use cases:</strong> market entry planning (rank cities by density), quarterly monitoring (openings/closures), head-to-head benchmarking.
             </p>
-            <p>
-              <strong>MVP:</strong> choropleth map, region drilldown, brand comparison scorecard, CSV/GeoJSON export.{" "}
-              <strong>Later:</strong> competitive heatmap, guesstimate engine, openings/closures timeline, delivery zones, predictive expansion.
-            </p>
           </Section>
 
           {/* 2. Interactive Prototype */}
