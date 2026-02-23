@@ -953,8 +953,7 @@ function rebuildLocationsLayer() {
   if (state.country !== "england") return;
 
   const zoom = state.map.getZoom();
-  // Show individual dots at zoom 11+ regardless of region selection
-  if (zoom < 11 && !state.selectedRegion) return;
+  // Always show dots — smaller at country zoom, larger when zoomed in
 
   const selected = selectedArr();
   const brandSet = new Set(selected);
@@ -984,15 +983,18 @@ function rebuildLocationsLayer() {
   if (feats.length === 0) return;
 
   // Limit markers for performance
-  const maxMarkers = 2000;
+  const maxMarkers = zoom < 11 ? 5000 : 2000;
   const displayFeats = feats.length > maxMarkers ? feats.slice(0, maxMarkers) : feats;
+
+  const dotRadius = zoom >= 13 ? 6 : zoom >= 11 ? 4 : zoom >= 9 ? 2.5 : 1.5;
+  const dotWeight = zoom >= 11 ? 1.5 : 0.5;
 
   state.locationsLayer = L.geoJSON({ type: "FeatureCollection", features: displayFeats }, {
     pointToLayer: (feature, latlng) => L.circleMarker(latlng, {
-      radius: zoom >= 13 ? 6 : 4,
-      weight: 1.5, color: "#fff", opacity: 1,
+      radius: dotRadius,
+      weight: dotWeight, color: "#fff", opacity: zoom >= 11 ? 1 : 0.6,
       fillColor: BRAND_COLORS[feature.properties.brand] || "#3B5BFE",
-      fillOpacity: 0.85
+      fillOpacity: zoom >= 11 ? 0.85 : 0.7
     }),
     onEachFeature: (feature, layer) => {
       const p = feature.properties;
