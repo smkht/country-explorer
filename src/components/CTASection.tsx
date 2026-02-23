@@ -1,5 +1,5 @@
 import { motion } from "framer-motion";
-import { ArrowRight, Sparkles } from "lucide-react";
+import { ArrowRight, MapPin } from "lucide-react";
 
 const CTASection = () => (
   <section id="cta" className="py-24">
@@ -12,14 +12,14 @@ const CTASection = () => (
         className="max-w-3xl mx-auto text-center bg-gradient-to-br from-primary to-[hsl(250_90%_65%)] rounded-3xl p-12 md:p-16"
       >
         <div className="inline-flex items-center gap-2 rounded-full bg-[hsl(0_0%_100%/0.15)] px-4 py-1.5 text-sm font-medium text-primary-foreground mb-6">
-          <Sparkles className="w-3.5 h-3.5" />
-          Golden Opportunity Maps · Competitive Heatmaps · Guesstimate Engine
+          <MapPin className="w-3.5 h-3.5" />
+          Country Explorer for Restaurant Chains
         </div>
         <h2 className="text-3xl md:text-4xl font-bold text-primary-foreground mb-4 tracking-tight">
-          Ready to find your next golden location?
+          Ready to map your restaurant market?
         </h2>
         <p className="text-primary-foreground/80 text-lg mb-8 max-w-xl mx-auto leading-relaxed">
-          Explore the interactive prototype — see competitive heatmaps, golden opportunity zones, and data-driven expansion advice for England.
+          Explore the interactive prototype — see restaurant coverage maps, chain comparisons, and exportable data for England.
         </p>
         <a
           href="/explorer"

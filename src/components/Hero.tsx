@@ -1,5 +1,5 @@
 import { motion } from "framer-motion";
-import { MapPin, Sparkles } from "lucide-react";
+import { MapPin } from "lucide-react";
 import dashboardPreview from "@/assets/dashboard-preview.png";
 
 const Hero = () => (
@@ -14,15 +14,15 @@ const Hero = () => (
         className="text-center max-w-3xl mx-auto mb-12"
       >
         <div className="inline-flex items-center gap-2 rounded-full bg-accent px-4 py-1.5 text-sm font-medium text-accent-foreground mb-6">
-          <Sparkles className="w-3.5 h-3.5" />
-          Now with Golden Opportunity Maps & Heatmaps
+          <MapPin className="w-3.5 h-3.5" />
+          Country Explorer for Restaurant Chains
         </div>
         <h1 className="text-4xl md:text-6xl font-bold text-foreground leading-tight tracking-tight mb-6">
-          Find where to open{" "}
-          <span className="text-gradient">your next store</span>
+          Map your restaurant competitors{" "}
+          <span className="text-gradient">in minutes</span>
         </h1>
         <p className="text-lg md:text-xl text-muted-foreground leading-relaxed max-w-2xl mx-auto mb-8">
-          Map every competitor, spot golden opportunity zones with real population data, and get data-driven expansion advice — all from a single dashboard built for QSR and fast-casual brands.
+          See where rival restaurant chains operate, how concentrated they are, and where the whitespace is — all from a single, living dashboard built for QSR and fast-casual brands.
         </p>
         <div className="flex flex-col sm:flex-row gap-4 justify-center">
           <a
@@ -49,7 +49,7 @@ const Hero = () => (
         <div className="rounded-2xl border border-border overflow-hidden glow-shadow">
           <img
             src={dashboardPreview}
-            alt="Country Explorer dashboard with honeycomb density map, competitive heatmaps, and golden opportunity zones"
+            alt="Country Explorer dashboard showing England regions choropleth map with brand analytics"
             className="w-full h-auto"
             loading="eager"
           />
