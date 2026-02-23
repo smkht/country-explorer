@@ -159,7 +159,8 @@ const OnePager = () => {
 
         {/* Footer */}
         <div className="mt-3 pt-2 flex justify-between text-[9px]" style={{ borderTop: "2px solid hsl(231 98% 61%)", color: "hsl(220 10% 46%)" }}>
-          <span>Getplace · Country Explorer · Test Assignment</span>
+          <span>02/2026
+          </span>
           <span>Interactive prototype: lovable.app</span>
         </div>
       </div>
@@ -171,8 +172,7 @@ const OnePager = () => {
           body { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
         }
       `}</style>
-    </div>);
-};
+    </div>);};
 
 const Section = ({ title, children }: {title: string;children: React.ReactNode;}) =>
 <div className="rounded-xl p-3" style={{ background: "rgba(255,255,255,0.7)", border: "1px solid hsl(220 13% 91%)" }}>
