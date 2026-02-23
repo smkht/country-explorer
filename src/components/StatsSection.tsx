@@ -1,8 +1,8 @@
 import { motion } from "framer-motion";
 
 const stats = [
-  { value: "5,718", label: "Locations tracked", sub: "England snapshot" },
-  { value: "6", label: "Brands monitored", sub: "QSR leaders" },
+  { value: "5,718", label: "Restaurant locations", sub: "England snapshot" },
+  { value: "6", label: "Chains monitored", sub: "QSR & fast-casual" },
   { value: "9", label: "Regions covered", sub: "ITL1 regions" },
   { value: "580.9", label: "Peak density", sub: "London per 1,000 km²" },
 ];
@@ -27,10 +27,10 @@ const StatsSection = () => (
         className="text-center max-w-2xl mx-auto mb-14"
       >
         <h2 className="text-3xl md:text-4xl font-bold text-foreground mb-4 tracking-tight">
-          Real data, real insights
+          Real restaurant data, real insights
         </h2>
         <p className="text-muted-foreground text-lg">
-          A snapshot from our England dataset — the kind of intelligence you'll have for any country.
+          A snapshot from our England restaurant dataset — the kind of intelligence you'll have for any country.
         </p>
       </motion.div>
 
@@ -61,7 +61,7 @@ const StatsSection = () => (
         className="max-w-2xl mx-auto bg-card rounded-2xl border border-border overflow-hidden"
       >
         <div className="px-6 py-4 border-b border-border">
-          <h3 className="font-semibold text-foreground">England — Locations by Brand</h3>
+          <h3 className="font-semibold text-foreground">England — Restaurant Locations by Chain</h3>
         </div>
         <table className="w-full">
           <thead>

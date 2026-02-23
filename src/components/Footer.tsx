@@ -10,7 +10,7 @@ const Footer = () => (
         <span className="font-bold text-foreground tracking-tight">getplace</span>
       </div>
       <p className="text-sm text-muted-foreground">
-        © 2026 Getplace. Delivery data intelligence for restaurant chains.
+        © 2026 Getplace. Competitive intelligence for restaurant chains.
       </p>
     </div>
   </footer>
