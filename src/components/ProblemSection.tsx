@@ -4,15 +4,15 @@ import { AlertTriangle, Clock, Search } from "lucide-react";
 const problems = [
   {
     icon: AlertTriangle,
-    text: "Manual competitor mapping for restaurant chains is slow, fragmented, and quickly outdated.",
+    text: "Manual competitor mapping is slow, fragmented, and doesn't account for population density or real opportunity.",
   },
   {
     icon: Clock,
-    text: "Decisions about new restaurant openings and delivery zones need evidence by region and city.",
+    text: "New store decisions need evidence — not gut feel. You need to know where footfall is high and competitors are thin.",
   },
   {
     icon: Search,
-    text: "No single source of truth for 'which restaurant chains operate where' across your market.",
+    text: "No single source of truth for 'which chains operate where' and 'where should we expand next' across your market.",
   },
 ];
 
@@ -27,10 +27,10 @@ const ProblemSection = () => (
         className="text-center max-w-2xl mx-auto mb-14"
       >
         <h2 className="text-3xl md:text-4xl font-bold text-foreground mb-4 tracking-tight">
-          The problem with restaurant competitor intelligence today
+          The problem with restaurant expansion today
         </h2>
         <p className="text-muted-foreground text-lg">
-          Restaurant strategy teams waste hours digging through spreadsheets, ad-hoc maps, and outdated reports.
+          Strategy teams waste hours on spreadsheets and gut-feel decisions while high-potential locations go to competitors.
         </p>
       </motion.div>
 

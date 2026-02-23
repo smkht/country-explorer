@@ -1,24 +1,24 @@
 import { motion } from "framer-motion";
-import { Target, CalendarCheck, Handshake } from "lucide-react";
+import { Target, Flame, Handshake } from "lucide-react";
 
 const useCases = [
   {
     icon: Target,
-    title: "Restaurant Expansion Planning",
+    title: "Smart Expansion Planning",
     description:
-      "Rank regions and cities by competitor restaurant density. Identify whitespace — areas with low chain presence but high potential for your next restaurant opening.",
+      "Use golden opportunity maps to identify high-density urban zones where competitors are thin. Population-gated scoring ensures you're only looking at areas with real footfall — not empty fields.",
   },
   {
-    icon: CalendarCheck,
-    title: "Quarterly Competitor Review",
+    icon: Flame,
+    title: "Competitive Dominance Tracking",
     description:
-      "Track restaurant openings and closures by region. Get alerted when a rival chain starts expanding into your priority markets.",
+      "Heatmap mode shows exactly where you lead or trail vs competitors. Combine with Guesstimate to see golden-bordered hexagons highlighting where you should expand to flip red zones green.",
   },
   {
     icon: Handshake,
-    title: "Head-to-Head Chain Benchmarking",
+    title: "Head-to-Head Benchmarking",
     description:
-      "Compare your restaurant brand vs competitors across regions with a consistent scorecard. Surface concentration patterns and delivery zone overlaps instantly.",
+      "Compare your brand vs any rival with market share bars, regional presence matrices, and concentration analysis. Surface exactly which regions you're under-indexed in relative to the competition.",
   },
 ];
 
@@ -36,7 +36,7 @@ const UseCasesSection = () => (
           Built for restaurant intelligence teams
         </h2>
         <p className="text-muted-foreground text-lg">
-          From expansion planning to board-ready reports — Country Explorer fits the workflow of QSR and fast-casual strategy teams.
+          From golden opportunity maps to board-ready competitive reports — Country Explorer fits the workflow of QSR and fast-casual strategy teams.
         </p>
       </motion.div>
 
