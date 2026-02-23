@@ -7,8 +7,8 @@
 */
 
 const state = {
-  selectedBrands: new Set(),  // default = all
-  metric: "count",            // count | density
+  selectedBrands: new Set(),
+  metric: "count",
   selectedRegion: null,
   metrics: null,
   regionsGeojson: null,
@@ -25,13 +25,12 @@ function formatPct(x){
   return (x*100).toFixed(1) + "%";
 }
 
-// simple color scale (blue-ish)
+// Light-theme blue color scale
 function colorScale(value, max){
-  if (!max || max <= 0) return "rgba(106,166,255,0.10)";
+  if (!max || max <= 0) return "rgba(59,91,254,0.05)";
   const t = Math.min(1, Math.max(0, value / max));
-  // map t to opacity and lightness
-  const a = 0.12 + 0.45 * t;
-  return `rgba(106,166,255,${a})`;
+  const a = 0.08 + 0.45 * t;
+  return `rgba(59,91,254,${a})`;
 }
 
 async function loadJSON(path){
@@ -47,7 +46,6 @@ function setTab(tab){
   document.querySelector(".container").classList.toggle("hidden", tab !== "overview");
   document.getElementById("compareTab").classList.toggle("hidden", tab !== "compare");
   document.getElementById("exportTab").classList.toggle("hidden", tab !== "export");
-  // map needs invalidateSize when hidden->shown
   if (tab === "overview" && state.map){
     setTimeout(()=>state.map.invalidateSize(), 120);
   }
@@ -69,7 +67,6 @@ function buildBrandChips(){
         state.selectedBrands.add(b);
         el.classList.add("active");
       }
-      // guard: keep at least 1 selected
       if (state.selectedBrands.size === 0){
         state.selectedBrands.add(b);
         el.classList.add("active");
@@ -91,7 +88,6 @@ function regionValue(regionName){
   let total = 0;
   selectedBrandsArray().forEach(b => total += (counts[b] || 0));
   if (state.metric === "count") return total;
-  // density per 1,000 km²
   return total / (area/1000.0);
 }
 
@@ -110,8 +106,8 @@ function styleRegion(feature){
   const max = computeMaxRegionValue();
   const isSelected = state.selectedRegion === name;
   return {
-    weight: isSelected ? 3 : 1,
-    color: isSelected ? "rgba(255,255,255,0.75)" : "rgba(255,255,255,0.25)",
+    weight: isSelected ? 2.5 : 1,
+    color: isSelected ? "rgba(59,91,254,0.8)" : "rgba(0,0,0,0.15)",
     fillColor: colorScale(v, max),
     fillOpacity: 1.0
   };
@@ -122,13 +118,12 @@ function initMap(){
   state.map = map;
   map.setView([52.8, -1.6], 6);
 
-  // basemap (no API key)
-  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+  // Clean light basemap
+  L.tileLayer('https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png', {
     maxZoom: 18,
-    attribution: '&copy; OpenStreetMap contributors'
+    attribution: '&copy; OpenStreetMap &copy; CARTO'
   }).addTo(map);
 
-  // regions layer
   const regionsLayer = L.geoJSON(state.regionsGeojson, {
     style: styleRegion,
     onEachFeature: (feature, layer)=>{
@@ -145,12 +140,10 @@ function initMap(){
 }
 
 function rebuildLocationsLayer(){
-  // remove existing
   if (state.locationsLayer){
     state.locationsLayer.remove();
     state.locationsLayer = null;
   }
-  // only show locations when region selected
   if (!state.selectedRegion) return;
 
   const selected = selectedBrandsArray();
@@ -159,16 +152,27 @@ function rebuildLocationsLayer(){
     return p.region === state.selectedRegion && selected.includes(p.brand);
   });
 
+  const brandColors = {
+    "Domino's": "#3B5BFE",
+    "KFC": "#E53935",
+    "McDonald's": "#F9A825",
+    "Nando's": "#FF6D00",
+    "Papa Johns": "#43A047",
+    "Subway": "#00897B"
+  };
+
   const layer = L.geoJSON({type:"FeatureCollection", features: feats}, {
     pointToLayer: (feature, latlng)=> L.circleMarker(latlng, {
-      radius: 4,
-      weight: 1,
-      opacity: 0.8,
-      fillOpacity: 0.7
+      radius: 5,
+      weight: 1.5,
+      color: "#fff",
+      opacity: 1,
+      fillColor: brandColors[feature.properties.brand] || "#3B5BFE",
+      fillOpacity: 0.85
     }),
     onEachFeature: (feature, layer)=>{
       const p = feature.properties;
-      const title = `<strong>${p.brand}</strong><br/>${p.name || ""}<br/><span style="color:#9bb0d1">${p.city || ""} ${p.postcode || ""}</span>`;
+      const title = `<strong>${p.brand}</strong><br/>${p.name || ""}<br/><span style="color:#6b7394">${p.city || ""} ${p.postcode || ""}</span>`;
       layer.bindPopup(title);
     }
   });
@@ -199,7 +203,6 @@ function computeKPIs(){
     if (t>0) regionsCovered += 1;
   });
 
-  // densest region by selected metric
   let bestRegion = null;
   let bestVal = -1;
   state.metrics.regions.forEach(r=>{
@@ -236,12 +239,10 @@ function refreshRegionPanel(){
   const selected = selectedBrandsArray();
   const counts = state.metrics.region_brand_counts[region] || {};
 
-  // total selected
   let total = 0;
   selected.forEach(b=> total += (counts[b] || 0));
   document.getElementById("regionTotal").textContent = formatInt(total);
 
-  // top brand in region among selected
   let topBrand = null, topVal=-1;
   selected.forEach(b=>{
     const v = counts[b] || 0;
@@ -250,12 +251,10 @@ function refreshRegionPanel(){
   document.getElementById("regionTopBrand").textContent = topBrand || "—";
   document.getElementById("regionTopBrandHint").textContent = total ? `${formatPct(topVal/total)} of selected` : "—";
 
-  // metric badge
   const metricLabel = state.metric === "count" ? "Total locations" : "Locations per 1,000 km²";
   const value = regionValue(region);
   document.getElementById("regionMetricText").textContent = `${metricLabel}: ${state.metric === "count" ? formatInt(value) : value.toFixed(1)}`;
 
-  // brand table
   const rows = selected.map(b=>({brand:b, count: (counts[b]||0)})).sort((a,b)=>b.count-a.count);
   const tbl = document.getElementById("regionBrandTable");
   tbl.innerHTML = `
@@ -266,7 +265,6 @@ function refreshRegionPanel(){
     }).join("")}
   `;
 
-  // top cities from point data
   const feats = state.locationsGeojson.features.filter(f=>{
     const p=f.properties;
     return p.region === region && selected.includes(p.brand);
@@ -295,7 +293,6 @@ function refreshCompareTab(){
     const total = state.metrics.brand_totals[b] || 0;
     const london = (state.metrics.region_brand_counts["London"]||{})[b] || 0;
 
-    // top 2 regions by share of brand
     const shares = state.metrics.regions.map(r=>{
       const c = (state.metrics.region_brand_counts[r]||{})[b] || 0;
       return {region:r, count:c, share: total ? c/total : 0};
@@ -313,7 +310,7 @@ function refreshCompareTab(){
   tbl.innerHTML = `
     <tr>
       <th>Brand</th>
-      <th class="num">Locations (England)</th>
+      <th class="num">Locations</th>
       <th class="num">London share</th>
       <th>Top regions</th>
     </tr>
@@ -323,7 +320,7 @@ function refreshCompareTab(){
         <td><strong>${r.brand}</strong></td>
         <td class="num">${formatInt(r.total)}</td>
         <td class="num">${formatPct(r.londonShare)}</td>
-        <td>${top}</td>
+        <td style="font-size:12px;color:var(--muted)">${top}</td>
       </tr>`;
     }).join("")}
   `;
@@ -343,7 +340,6 @@ function exportFiltered(type){
     return;
   }
 
-  // CSV
   const header = ["brand","id","name","city","postcode","region","lon","lat"];
   const lines = [header.join(",")];
   feats.forEach(f=>{
@@ -354,7 +350,6 @@ function exportFiltered(type){
       lon, lat
     ].map(v=>{
       const s = (v===null || v===undefined) ? "" : String(v);
-      // escape quotes
       const escaped = s.replaceAll('"','""');
       return `"${escaped}"`;
     }).join(",");
@@ -376,30 +371,25 @@ function downloadBlob(blob, filename){
 }
 
 function wireUI(){
-  // tabs
   document.querySelectorAll(".nav button").forEach(b=>{
     b.addEventListener("click", ()=> setTab(b.dataset.tab));
   });
 
-  // metric
   document.getElementById("metricSelect").addEventListener("change", (e)=>{
     state.metric = e.target.value;
     refreshAll();
   });
 
-  // quick actions
   document.getElementById("clearRegion").onclick = ()=>{
     state.selectedRegion = null;
     refreshAll();
   };
   document.getElementById("selectAllBrands").onclick = ()=>{
     state.selectedBrands = new Set(state.metrics.brands);
-    // set chip UI
     document.querySelectorAll("#brandChips .chip").forEach(ch=> ch.classList.add("active"));
     refreshAll();
   };
   document.getElementById("selectTop3Brands").onclick = ()=>{
-    // top 3 by total
     const top = Object.entries(state.metrics.brand_totals)
       .sort((a,b)=>b[1]-a[1]).slice(0,3).map(x=>x[0]);
     state.selectedBrands = new Set(top);
@@ -409,7 +399,6 @@ function wireUI(){
     refreshAll();
   };
 
-  // export buttons
   document.getElementById("exportCsv").onclick = ()=> exportFiltered("csv");
   document.getElementById("exportGeojson").onclick = ()=> exportFiltered("geojson");
 }
@@ -436,7 +425,7 @@ async function main(){
 
   }catch(err){
     console.error(err);
-    alert("Prototype failed to load data. If you opened index.html directly, please run a local server (see Export tab).\n\nError: " + err.message);
+    alert("Failed to load data. Please ensure all data files are present.\n\nError: " + err.message);
   }
 }
 
