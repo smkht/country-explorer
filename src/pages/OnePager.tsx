@@ -161,7 +161,8 @@ const OnePager = () => {
         <div className="mt-3 pt-2 flex justify-between text-[9px]" style={{ borderTop: "2px solid hsl(231 98% 61%)", color: "hsl(220 10% 46%)" }}>
           <span>02/2026
           </span>
-          <span>Interactive prototype: lovable.app</span>
+          <span>Prepared by Ivan Smakhtin for Getplace.io
+          </span>
         </div>
       </div>
 
@@ -173,7 +174,6 @@ const OnePager = () => {
         }
       `}</style>
     </div>);};
-
 const Section = ({ title, children }: {title: string;children: React.ReactNode;}) =>
 <div className="rounded-xl p-3" style={{ background: "rgba(255,255,255,0.7)", border: "1px solid hsl(220 13% 91%)" }}>
     <h2 className="text-xs font-bold mb-1 uppercase tracking-wide" style={{ color: "hsl(231 98% 61%)" }}>{title}</h2>
