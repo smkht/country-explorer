@@ -1,4 +1,4 @@
-/* Country Explorer — vanilla JS + Leaflet + Turf.js honeycomb + heatmap mode */
+/* Country Explorer — vanilla JS + Leaflet + Turf.js honeycomb + heatmap + guesstimate */
 
 const BRAND_COLORS = {
   "Domino's": "#3B5BFE",
@@ -121,7 +121,6 @@ const REGION_CITIES = {
   ]
 };
 
-// Approximate region centers for fly-to
 const REGION_CENTERS = {
   "East (England)": { lat: 52.2, lon: 0.5, zoom: 8 },
   "East Midlands (England)": { lat: 52.8, lon: -1.1, zoom: 8 },
@@ -153,7 +152,10 @@ const state = {
   primaryBrand: null,
   compareMode: "all",
   secondaryBrand: null,
-  country: "england"
+  country: "england",
+  guesstimateMode: false,
+  // Spatial index for fast viewport queries
+  _pointIndex: null
 };
 
 const fmtInt = x => new Intl.NumberFormat("en-GB").format(x);
@@ -179,21 +181,16 @@ function hexStrokeDensity(count, max) {
   return `rgba(59,91,254,${0.08 + 0.35 * t})`;
 }
 
-// Heatmap: red (losing) → yellow (equal) → green (winning)
 function hexFillHeatmap(ratio) {
-  // ratio = primaryCount / (primaryCount + competitorCount), NaN if both 0
   if (isNaN(ratio)) return "hsla(0,0%,90%,0.1)";
-  // 0 = all competitor, 0.5 = equal, 1 = all primary
   const t = Math.max(0, Math.min(1, ratio));
   if (t < 0.5) {
-    // Red → Yellow
     const p = t / 0.5;
-    const h = p * 60; // 0→60
+    const h = p * 60;
     return `hsla(${h},85%,${55 - 10 * (1 - p)}%,${0.5 + 0.3 * (1 - p)})`;
   } else {
-    // Yellow → Green
     const p = (t - 0.5) / 0.5;
-    const h = 60 + p * 60; // 60→120
+    const h = 60 + p * 60;
     return `hsla(${h},70%,${50 - 5 * p}%,${0.45 + 0.25 * p})`;
   }
 }
@@ -205,12 +202,14 @@ function hexStrokeHeatmap(ratio) {
 }
 
 function cellSizeForZoom(zoom) {
-  if (zoom >= 12) return 1;
-  if (zoom >= 11) return 1.5;
-  if (zoom >= 10) return 2.5;
-  if (zoom >= 9) return 4;
-  if (zoom >= 8) return 6;
-  if (zoom >= 7) return 10;
+  if (zoom >= 14) return 0.3;
+  if (zoom >= 13) return 0.5;
+  if (zoom >= 12) return 0.8;
+  if (zoom >= 11) return 1.2;
+  if (zoom >= 10) return 2;
+  if (zoom >= 9) return 3.5;
+  if (zoom >= 8) return 5;
+  if (zoom >= 7) return 8;
   return 15;
 }
 
@@ -222,11 +221,12 @@ function setCountry(country) {
   document.getElementById("regionSelect").disabled = !isEngland;
   document.getElementById("mapLegend").classList.toggle("hidden", !isEngland);
 
-  // Disable data sections
-  ["kpiSection", "brandsSection", "metricSection", "regionDetailSection", "heatmapSection"]
+  ["kpiSection", "brandsSection", "metricSection", "regionDetailSection", "heatmapSection", "guesstimateSection"]
     .forEach(id => {
-      document.getElementById(id).style.opacity = isEngland ? "1" : "0.3";
-      document.getElementById(id).style.pointerEvents = isEngland ? "auto" : "none";
+      const el = document.getElementById(id);
+      if (!el) return;
+      el.style.opacity = isEngland ? "1" : "0.3";
+      el.style.pointerEvents = isEngland ? "auto" : "none";
     });
 
   if (isEngland) {
@@ -234,7 +234,6 @@ function setCountry(country) {
     if (state.regionsLayer) state.regionsLayer.addTo(state.map);
     buildHexLayer();
   } else {
-    // Clear map layers
     if (state.hexLayer) { state.hexLayer.remove(); state.hexLayer = null; }
     if (state.locationsLayer) { state.locationsLayer.remove(); state.locationsLayer = null; }
     if (state.regionsLayer) state.regionsLayer.remove();
@@ -336,6 +335,43 @@ function buildCitySelect(region) {
 
 const selectedArr = () => Array.from(state.selectedBrands);
 
+// ── Spatial index for fast point lookups ──
+function buildSpatialIndex() {
+  // Simple grid-based spatial index
+  const cellSize = 0.5; // degrees
+  const index = {};
+  state.locationsGeojson.features.forEach(f => {
+    const [lon, lat] = f.geometry.coordinates;
+    const key = `${Math.floor(lon / cellSize)},${Math.floor(lat / cellSize)}`;
+    if (!index[key]) index[key] = [];
+    index[key].push(f);
+  });
+  state._pointIndex = { cellSize, index };
+}
+
+function getPointsInBounds(bounds, brandFilter, regionFilter) {
+  if (!state._pointIndex) return [];
+  const { cellSize, index } = state._pointIndex;
+  const w = bounds.getWest(), e = bounds.getEast(), s = bounds.getSouth(), n = bounds.getNorth();
+  const minX = Math.floor(w / cellSize), maxX = Math.floor(e / cellSize);
+  const minY = Math.floor(s / cellSize), maxY = Math.floor(n / cellSize);
+  const results = [];
+  for (let x = minX; x <= maxX; x++) {
+    for (let y = minY; y <= maxY; y++) {
+      const bucket = index[`${x},${y}`];
+      if (!bucket) continue;
+      for (const f of bucket) {
+        const p = f.properties;
+        if (brandFilter && !brandFilter.has(p.brand)) continue;
+        if (regionFilter && p.region !== regionFilter) continue;
+        const [lon, lat] = f.geometry.coordinates;
+        if (lon >= w && lon <= e && lat >= s && lat <= n) results.push(f);
+      }
+    }
+  }
+  return results;
+}
+
 // ── Map ──
 function initMap() {
   const map = L.map('map', { zoomControl: true, zoomSnap: 0.5 });
@@ -364,8 +400,24 @@ function initMap() {
   }).addTo(map);
 
   buildHexLayer();
-  map.on('zoomend', () => { clearTimeout(state.hexDebounce); state.hexDebounce = setTimeout(() => buildHexLayer(), 150); });
-  map.on('moveend', () => { if (map.getZoom() >= 8) { clearTimeout(state.hexDebounce); state.hexDebounce = setTimeout(() => buildHexLayer(), 200); } });
+
+  // Faster debounce + rebuild on both zoom and pan at high zoom
+  map.on('zoomend', () => {
+    clearTimeout(state.hexDebounce);
+    state.hexDebounce = setTimeout(() => {
+      buildHexLayer();
+      rebuildLocationsLayer();
+    }, 60);
+  });
+  map.on('moveend', () => {
+    if (map.getZoom() >= 7.5) {
+      clearTimeout(state.hexDebounce);
+      state.hexDebounce = setTimeout(() => {
+        buildHexLayer();
+        rebuildLocationsLayer();
+      }, 80);
+    }
+  });
 }
 
 function flyToRegion(region) {
@@ -383,7 +435,7 @@ function flyToCity(cityName, region) {
   if (city) state.map.flyTo([city.lat, city.lon], 13, { duration: 1 });
 }
 
-// ── Honeycomb layer ──
+// ── Honeycomb layer (optimized) ──
 function buildHexLayer() {
   if (state.hexLayer) { state.hexLayer.remove(); state.hexLayer = null; }
   if (!state.map || state.country !== "england") return;
@@ -391,40 +443,26 @@ function buildHexLayer() {
   const zoom = state.map.getZoom();
   const cellSize = cellSizeForZoom(zoom);
   const selected = selectedArr();
-
   const regionFilter = state.selectedRegion;
-  const allLocations = state.locationsGeojson.features;
-
-  // In heatmap mode, we need primary vs competitor counts per hex
   const isHeatmap = state.heatmapMode && state.primaryBrand;
 
-  let locations;
+  // Always use viewport bounds for performance
+  const bounds = state.map.getBounds().pad(0.15);
+  const bbox = [bounds.getWest(), bounds.getSouth(), bounds.getEast(), bounds.getNorth()];
+
+  let brandFilter;
   if (isHeatmap) {
-    // Include primary + competitors
     const competitors = state.compareMode === "all"
       ? state.metrics.brands.filter(b => b !== state.primaryBrand)
       : (state.secondaryBrand ? [state.secondaryBrand] : []);
-    const allBrands = [state.primaryBrand, ...competitors];
-    locations = allLocations.filter(f =>
-      allBrands.includes(f.properties.brand) &&
-      (!regionFilter || f.properties.region === regionFilter)
-    );
+    brandFilter = new Set([state.primaryBrand, ...competitors]);
   } else {
-    locations = allLocations.filter(f =>
-      selected.includes(f.properties.brand) &&
-      (!regionFilter || f.properties.region === regionFilter)
-    );
+    brandFilter = new Set(selected);
   }
 
+  // Use spatial index for fast point retrieval
+  const locations = getPointsInBounds(bounds, brandFilter, regionFilter);
   if (locations.length === 0) return;
-
-  let bbox;
-  if (zoom >= 8) {
-    const b = state.map.getBounds().pad(0.2);
-    bbox = [b.getWest(), b.getSouth(), b.getEast(), b.getNorth()];
-  } else {
-    bbox = [-6.5, 49.5, 2.5, 56.5];
-  }
 
   const hexGrid = turf.hexGrid(bbox, cellSize, { units: 'kilometers' });
   const points = turf.featureCollection(locations.map(f => turf.point(f.geometry.coordinates, f.properties)));
@@ -494,8 +532,6 @@ function buildHexLayer() {
 
   if (state.regionsLayer) state.regionsLayer.bringToFront();
   if (state.locationsLayer) state.locationsLayer.bringToFront();
-
-  // Update legend
   updateLegend();
 }
 
@@ -523,24 +559,45 @@ function updateLegend() {
   }
 }
 
-// ── Location markers ──
+// ── Location markers — show at zoom >= 11 even without region ──
 function rebuildLocationsLayer() {
   if (state.locationsLayer) { state.locationsLayer.remove(); state.locationsLayer = null; }
-  if (!state.selectedRegion || state.country !== "england") return;
+  if (state.country !== "england") return;
+
+  const zoom = state.map.getZoom();
+  // Show individual dots at zoom 11+ regardless of region selection
+  if (zoom < 11 && !state.selectedRegion) return;
 
   const selected = selectedArr();
+  const brandSet = new Set(selected);
   const cityFilter = state.selectedCity;
-  const feats = state.locationsGeojson.features.filter(f => {
-    const p = f.properties;
-    if (p.region !== state.selectedRegion) return false;
-    if (!selected.includes(p.brand)) return false;
-    if (cityFilter && (p.city || "").trim() !== cityFilter) return false;
-    return true;
-  });
+  const regionFilter = state.selectedRegion;
 
-  state.locationsLayer = L.geoJSON({ type: "FeatureCollection", features: feats }, {
+  let feats;
+  if (zoom >= 11 && !regionFilter) {
+    // High zoom: show all visible points in viewport
+    feats = getPointsInBounds(state.map.getBounds().pad(0.05), brandSet, null);
+  } else {
+    feats = getPointsInBounds(
+      regionFilter ? state.map.getBounds().pad(0.1) : state.map.getBounds().pad(0.05),
+      brandSet,
+      regionFilter
+    );
+    if (cityFilter) {
+      feats = feats.filter(f => (f.properties.city || "").trim().toLowerCase() === cityFilter.toLowerCase());
+    }
+  }
+
+  if (feats.length === 0) return;
+
+  // Limit markers for performance
+  const maxMarkers = 2000;
+  const displayFeats = feats.length > maxMarkers ? feats.slice(0, maxMarkers) : feats;
+
+  state.locationsLayer = L.geoJSON({ type: "FeatureCollection", features: displayFeats }, {
     pointToLayer: (feature, latlng) => L.circleMarker(latlng, {
-      radius: 5, weight: 1.5, color: "#fff", opacity: 1,
+      radius: zoom >= 13 ? 6 : 4,
+      weight: 1.5, color: "#fff", opacity: 1,
       fillColor: BRAND_COLORS[feature.properties.brand] || "#3B5BFE",
       fillOpacity: 0.85
     }),
@@ -560,6 +617,7 @@ function refreshAll() {
   refreshRegionPanel();
   refreshCompareTab();
   refreshExportInfo();
+  if (state.guesstimateMode) refreshGuesstimate();
 }
 
 function refreshKPIs() {
@@ -629,7 +687,7 @@ function refreshRegionPanel() {
     }).join("")}
   `;
 
-  // Top cities - clickable
+  // Top cities — clickable
   const feats = state.locationsGeojson.features.filter(f => f.properties.region === region && selected.includes(f.properties.brand));
   const cityCounts = {};
   feats.forEach(f => { const c = (f.properties.city || "Unknown").trim(); cityCounts[c] = (cityCounts[c] || 0) + 1; });
@@ -637,19 +695,42 @@ function refreshRegionPanel() {
 
   document.getElementById("regionCityTable").innerHTML = `
     <tr><th>City</th><th class="num">Locations</th></tr>
-    ${topCities.map(r => `<tr><td><span class="city-link" data-city="${r.city}">${r.city}</span></td><td class="num">${fmtInt(r.count)}</td></tr>`).join("")}
+    ${topCities.map(r => `<tr><td><span class="city-link" data-city="${r.city}" data-region="${region}">${r.city}</span></td><td class="num">${fmtInt(r.count)}</td></tr>`).join("")}
   `;
 
   // Wire city clicks
   document.querySelectorAll(".city-link").forEach(el => {
     el.onclick = () => {
       const cityName = el.dataset.city;
+      const cityRegion = el.dataset.region;
       state.selectedCity = cityName;
-      document.getElementById("citySelect").value = cityName;
-      flyToCity(cityName, state.selectedRegion);
+      // Try to set city select value
+      const citySelect = document.getElementById("citySelect");
+      if (citySelect) citySelect.value = cityName;
+      // Fly to the city — first check REGION_CITIES, then use data centroid
+      flyToCityOrData(cityName, cityRegion);
       rebuildLocationsLayer();
     };
   });
+}
+
+// Enhanced city fly — falls back to calculating centroid from data
+function flyToCityOrData(cityName, region) {
+  const cities = REGION_CITIES[region] || [];
+  const city = cities.find(c => c.name.toLowerCase() === cityName.toLowerCase());
+  if (city) {
+    state.map.flyTo([city.lat, city.lon], 13, { duration: 1 });
+    return;
+  }
+  // Fallback: find centroid from actual data points
+  const pts = state.locationsGeojson.features.filter(f =>
+    (f.properties.city || "").trim().toLowerCase() === cityName.toLowerCase()
+  );
+  if (pts.length > 0) {
+    let latSum = 0, lonSum = 0;
+    pts.forEach(f => { lonSum += f.geometry.coordinates[0]; latSum += f.geometry.coordinates[1]; });
+    state.map.flyTo([latSum / pts.length, lonSum / pts.length], 13, { duration: 1 });
+  }
 }
 
 function refreshCompareTab() {
@@ -682,6 +763,118 @@ function refreshExportInfo() {
   document.getElementById("exportRegionInfo").textContent = state.selectedRegion ? state.selectedRegion.replace(" (England)", "") : "All England";
   const feats = state.locationsGeojson.features.filter(f => selected.includes(f.properties.brand) && (!state.selectedRegion || f.properties.region === state.selectedRegion));
   document.getElementById("exportCountInfo").textContent = fmtInt(feats.length);
+}
+
+// ════════════════════════════════════════════
+// ── GUESSTIMATE ENGINE (fake market insights)
+// ════════════════════════════════════════════
+
+function generateGuesstimateData() {
+  const selected = selectedArr();
+  const region = state.selectedRegion;
+  const regionLabel = region ? region.replace(" (England)", "") : "England";
+
+  // Seed from selected brands + region for consistent-ish results
+  const seed = (selected.join("") + (region || "all")).split("").reduce((a, c) => a + c.charCodeAt(0), 0);
+  const rng = (min, max) => {
+    const x = Math.sin(seed * 9301 + min * 49297 + max * 233) * 10000;
+    return Math.floor((x - Math.floor(x)) * (max - min + 1)) + min;
+  };
+
+  // Market saturation
+  const totalLocs = selected.reduce((sum, b) => sum + (state.metrics.brand_totals[b] || 0), 0);
+  const saturation = Math.min(95, Math.max(15, rng(25, 85)));
+  const marketSize = rng(800, 3200);
+  const revenuePerLoc = rng(450, 1200);
+
+  // Regional insights
+  const regionInsights = state.metrics.regions.map(r => {
+    const rCounts = state.metrics.region_brand_counts[r] || {};
+    let total = 0;
+    selected.forEach(b => total += (rCounts[b] || 0));
+    const pop = rng(800000, 9000000);
+    const opportunity = Math.max(0, 100 - Math.floor((total / (pop / 100000)) * 30));
+    return { region: r.replace(" (England)", ""), locations: total, population: pop, opportunity };
+  }).sort((a, b) => b.opportunity - a.opportunity);
+
+  // Whitespace cities (fake data for areas with low coverage)
+  const whitespace = [
+    { city: "Swindon", score: rng(70, 95), reason: "Low competitor density, growing population" },
+    { city: "Milton Keynes", score: rng(65, 90), reason: "High commuter traffic, underserved" },
+    { city: "Exeter", score: rng(60, 88), reason: "University town, limited fast-food options" },
+    { city: "Lincoln", score: rng(55, 85), reason: "Growing catchment, minimal brand presence" },
+    { city: "York", score: rng(50, 82), reason: "Tourist hotspot, seasonal demand peak" }
+  ].sort((a, b) => b.score - a.score);
+
+  // Growth projections
+  const growth = {
+    current: totalLocs,
+    y1: Math.floor(totalLocs * (1 + rng(3, 12) / 100)),
+    y2: Math.floor(totalLocs * (1 + rng(8, 22) / 100)),
+    y3: Math.floor(totalLocs * (1 + rng(15, 35) / 100)),
+    cagr: (rng(3, 12)).toFixed(1)
+  };
+
+  return { saturation, marketSize, revenuePerLoc, regionInsights, whitespace, growth, regionLabel, totalLocs };
+}
+
+function refreshGuesstimate() {
+  const panel = document.getElementById("guesstimatePanel");
+  if (!state.guesstimateMode) { panel.classList.add("hidden"); return; }
+  panel.classList.remove("hidden");
+
+  const d = generateGuesstimateData();
+
+  panel.innerHTML = `
+    <div class="guesstimate-badge">⚡ Guesstimate · Simulated Data</div>
+
+    <div class="rp-kpi-grid" style="margin-bottom:12px">
+      <div class="rp-kpi-card"><div class="rp-kpi-value">${d.saturation}%</div><div class="rp-kpi-label">Market Saturation</div></div>
+      <div class="rp-kpi-card"><div class="rp-kpi-value">£${fmtInt(d.marketSize)}M</div><div class="rp-kpi-label">Est. Market Size</div></div>
+      <div class="rp-kpi-card"><div class="rp-kpi-value">£${fmtInt(d.revenuePerLoc)}K</div><div class="rp-kpi-label">Rev / Location</div></div>
+      <div class="rp-kpi-card"><div class="rp-kpi-value">${d.growth.cagr}%</div><div class="rp-kpi-label">Est. CAGR</div></div>
+    </div>
+
+    <div class="rp-table-section">
+      <div class="rp-table-title">📈 Growth Projections</div>
+      <table class="table">
+        <tr><th>Year</th><th class="num">Locations</th><th class="num">Change</th></tr>
+        <tr><td>Current</td><td class="num">${fmtInt(d.growth.current)}</td><td class="num">—</td></tr>
+        <tr><td>Year 1</td><td class="num">${fmtInt(d.growth.y1)}</td><td class="num" style="color:#43A047">+${fmtInt(d.growth.y1 - d.growth.current)}</td></tr>
+        <tr><td>Year 2</td><td class="num">${fmtInt(d.growth.y2)}</td><td class="num" style="color:#43A047">+${fmtInt(d.growth.y2 - d.growth.current)}</td></tr>
+        <tr><td>Year 3</td><td class="num">${fmtInt(d.growth.y3)}</td><td class="num" style="color:#43A047">+${fmtInt(d.growth.y3 - d.growth.current)}</td></tr>
+      </table>
+    </div>
+
+    <div class="rp-table-section">
+      <div class="rp-table-title">🎯 Whitespace Opportunities</div>
+      <table class="table">
+        <tr><th>City</th><th class="num">Score</th><th>Reason</th></tr>
+        ${d.whitespace.map(w => `<tr>
+          <td><strong>${w.city}</strong></td>
+          <td class="num"><span class="opp-score ${w.score >= 80 ? 'high' : w.score >= 60 ? 'med' : 'low'}">${w.score}</span></td>
+          <td style="font-size:11px;color:var(--muted)">${w.reason}</td>
+        </tr>`).join("")}
+      </table>
+    </div>
+
+    <div class="rp-table-section">
+      <div class="rp-table-title">🗺️ Regional Opportunity Index</div>
+      <table class="table">
+        <tr><th>Region</th><th class="num">Locs</th><th class="num">Opportunity</th></tr>
+        ${d.regionInsights.slice(0, 5).map(r => `<tr>
+          <td>${r.region}</td>
+          <td class="num">${fmtInt(r.locations)}</td>
+          <td class="num">
+            <div class="opp-bar-wrap">
+              <div class="opp-bar" style="width:${r.opportunity}%;background:${r.opportunity > 70 ? '#43A047' : r.opportunity > 40 ? '#FF9800' : '#E53935'}"></div>
+              <span>${r.opportunity}%</span>
+            </div>
+          </td>
+        </tr>`).join("")}
+      </table>
+    </div>
+  `;
 }
 
 // ── Export ──
@@ -717,10 +910,8 @@ function wireUI() {
   document.querySelectorAll(".sidebar-btn[data-tab]").forEach(b => b.addEventListener("click", () => setTab(b.dataset.tab)));
   document.querySelectorAll(".rp-tab").forEach(b => b.addEventListener("click", () => setTab(b.dataset.tab)));
 
-  // Country
   document.getElementById("countrySelect").addEventListener("change", e => setCountry(e.target.value));
 
-  // Region
   document.getElementById("regionSelect").addEventListener("change", e => {
     state.selectedRegion = e.target.value || null;
     state.selectedCity = null;
@@ -729,15 +920,13 @@ function wireUI() {
     refreshAll();
   });
 
-  // City
   document.getElementById("citySelect").addEventListener("change", e => {
     state.selectedCity = e.target.value || null;
-    if (state.selectedCity) flyToCity(state.selectedCity, state.selectedRegion);
+    if (state.selectedCity) flyToCityOrData(state.selectedCity, state.selectedRegion);
     else if (state.selectedRegion) flyToRegion(state.selectedRegion);
     rebuildLocationsLayer();
   });
 
-  // Clear region
   document.getElementById("clearRegion").onclick = () => {
     state.selectedRegion = null;
     state.selectedCity = null;
@@ -747,7 +936,6 @@ function wireUI() {
     refreshAll();
   };
 
-  // Metric toggles
   document.querySelectorAll(".metric-toggle").forEach(btn => {
     btn.addEventListener("click", () => {
       document.querySelectorAll(".metric-toggle").forEach(b => b.classList.remove("active"));
@@ -762,28 +950,32 @@ function wireUI() {
     state.heatmapMode = e.target.checked;
     document.getElementById("heatmapSettings").classList.toggle("hidden", !state.heatmapMode);
     buildHexLayer();
+    updateLegend();
   });
 
-  // Primary brand
   document.getElementById("primaryBrandSelect").addEventListener("change", e => {
     state.primaryBrand = e.target.value;
     buildHexLayer();
   });
 
-  // Compare mode
   document.getElementById("compareModeSelect").addEventListener("change", e => {
     state.compareMode = e.target.value;
     document.getElementById("secondaryBrandRow").classList.toggle("hidden", e.target.value !== "pick");
     buildHexLayer();
   });
 
-  // Secondary brand
   document.getElementById("secondaryBrandSelect").addEventListener("change", e => {
     state.secondaryBrand = e.target.value;
     buildHexLayer();
   });
 
-  // Brand quick-select
+  // Guesstimate toggle
+  document.getElementById("guesstimateToggle").addEventListener("change", e => {
+    state.guesstimateMode = e.target.checked;
+    if (state.guesstimateMode) refreshGuesstimate();
+    else document.getElementById("guesstimatePanel").classList.add("hidden");
+  });
+
   document.getElementById("selectAllBrands").onclick = () => setAllBrands(state.metrics.brands);
   document.getElementById("selectTop3Brands").onclick = () => {
     const top = Object.entries(state.metrics.brand_totals).sort((a, b) => b[1] - a[1]).slice(0, 3).map(x => x[0]);
@@ -801,6 +993,7 @@ async function main() {
     state.regionsGeojson = await loadJSON("england_regions_simplified.geojson");
     state.locationsGeojson = await loadJSON("england_locations_min.geojson");
 
+    buildSpatialIndex();
     buildBrandList();
     buildRegionSelect();
     buildBrandSelects();
