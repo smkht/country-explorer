@@ -400,7 +400,51 @@ function getPointsInBounds(bounds, brandFilter, regionFilter) {
   return results;
 }
 
-// ── Map ──
+// ── Compute unlocated stores (in metrics but missing from GeoJSON) ──
+function computeUnlocatedStores() {
+  const geojsonCounts = {}; // { region: { brand: count } }
+  state.locationsGeojson.features.forEach(f => {
+    const p = f.properties;
+    if (!p.region) return;
+    if (!geojsonCounts[p.region]) geojsonCounts[p.region] = {};
+    geojsonCounts[p.region][p.brand] = (geojsonCounts[p.region][p.brand] || 0) + 1;
+  });
+
+  const unlocated = {}; // { region: { brand: count, _total: n } }
+  let totalUnlocated = 0;
+  state.metrics.regions.forEach(r => {
+    const metricCounts = state.metrics.region_brand_counts[r] || {};
+    const geoCounts = geojsonCounts[r] || {};
+    unlocated[r] = { _total: 0 };
+    state.metrics.brands.forEach(b => {
+      const diff = Math.max(0, (metricCounts[b] || 0) - (geoCounts[b] || 0));
+      unlocated[r][b] = diff;
+      unlocated[r]._total += diff;
+      totalUnlocated += diff;
+    });
+  });
+
+  state.unlocatedStores = unlocated;
+  state.totalUnlocated = totalUnlocated;
+
+  // Also count city-null stores per region (have coords but no city — useful for city-level analysis)
+  const cityNull = {};
+  state.locationsGeojson.features.forEach(f => {
+    const p = f.properties;
+    const city = (p.city || "").trim();
+    if (!city || city === "Unknown") {
+      if (!cityNull[p.region]) cityNull[p.region] = { _total: 0 };
+      cityNull[p.region][p.brand] = (cityNull[p.region][p.brand] || 0) + 1;
+      cityNull[p.region]._total++;
+    }
+  });
+  state.cityNullStores = cityNull;
+
+  console.log(`📊 Unlocated stores (no coords): ${totalUnlocated} across ${Object.keys(unlocated).length} regions`);
+  const cityNullTotal = Object.values(cityNull).reduce((s, r) => s + r._total, 0);
+  console.log(`📊 City-null stores (have coords, no city): ${cityNullTotal}`);
+}
+
 function initMap() {
   const map = L.map('map', { zoomControl: true, zoomSnap: 0.5 });
   state.map = map;
@@ -496,6 +540,32 @@ function buildHexLayer() {
     return Math.round((hexAreaKm2 / totalArea) * ENGLAND_TOTAL_POPULATION);
   }
 
+  // Helper: estimate unlocated store weight for a hex (proportional to population share of region)
+  function estimateUnlocatedWeight(hex, brandFilter) {
+    if (!state.unlocatedStores) return 0;
+    const centroid = turf.centroid(hex);
+    const hexPop = estimateHexPopulation(hex);
+    if (state.regionsGeojson) {
+      for (const region of state.regionsGeojson.features) {
+        if (turf.booleanPointInPolygon(centroid, region)) {
+          const regionName = region.properties.rgn24nm || region.properties.name || '';
+          const regionPop = REGION_POPULATION[regionName] || 1;
+          const unlocated = state.unlocatedStores[regionName] || {};
+          // Sum unlocated stores for the relevant brands
+          let relevantUnlocated = 0;
+          if (brandFilter) {
+            brandFilter.forEach(b => { relevantUnlocated += (unlocated[b] || 0); });
+          } else {
+            relevantUnlocated = unlocated._total || 0;
+          }
+          // Distribute proportionally by population
+          return relevantUnlocated * (hexPop / regionPop);
+        }
+      }
+    }
+    return 0;
+  }
+
 
   const bounds = state.map.getBounds().pad(0.15);
   const bbox = [bounds.getWest(), bounds.getSouth(), bounds.getEast(), bounds.getNorth()];
@@ -529,10 +599,16 @@ function buildHexLayer() {
         if (p.properties.brand === state.primaryBrand) primary++;
         else if (competitors.includes(p.properties.brand)) comp++;
       });
+      // Add unlocated store weight
+      const unlocW = estimateUnlocatedWeight(hex, brandFilter);
+      const unlocPrimary = estimateUnlocatedWeight(hex, new Set([state.primaryBrand]));
+      const unlocComp = unlocW - unlocPrimary;
       hex.properties.primary = primary;
       hex.properties.competitor = comp;
       hex.properties.total = primary + comp;
-      hex.properties.ratio = (primary + comp) > 0 ? primary / (primary + comp) : NaN;
+      hex.properties.unlocated = unlocW;
+      hex.properties.adjustedTotal = primary + comp + unlocW;
+      hex.properties.ratio = (primary + comp + unlocW) > 0 ? (primary + unlocPrimary) / (primary + comp + unlocW) : NaN;
       hex.properties.estPop = estimateHexPopulation(hex);
     });
 
@@ -558,15 +634,18 @@ function buildHexLayer() {
         if (p.total === 0) {
           const pop = p.estPop || 0;
           const popK = pop > 1000 ? (pop / 1000).toFixed(1) + 'k' : pop;
-          layer.bindTooltip(`No stores · Pop: ~${popK}${pop > 0 ? ' — untapped area' : ''}`, { sticky: true });
+          const unlocK = p.unlocated > 0.1 ? ` · +${p.unlocated.toFixed(1)} est. unlocated` : '';
+          layer.bindTooltip(`No stores${unlocK} · Pop: ~${popK}${pop > 0 ? ' — untapped area' : ''}`, { sticky: true });
           return;
         }
         const pctText = !isNaN(p.ratio) ? ` (${(p.ratio * 100).toFixed(0)}% ${state.primaryBrand})` : '';
         const pop = p.estPop;
-        const popPer = pop > 0 ? (pop / Math.max(1, p.total)).toLocaleString('en', {maximumFractionDigits: 0}) : '—';
+        const adjTotal = p.adjustedTotal || p.total;
+        const popPer = pop > 0 ? (pop / Math.max(1, adjTotal)).toLocaleString('en', {maximumFractionDigits: 0}) : '—';
         const popK = pop > 1000 ? (pop / 1000).toFixed(1) + 'k' : pop;
+        const unlocNote = p.unlocated > 0.1 ? `<br>+${p.unlocated.toFixed(1)} est. unlocated stores in area` : '';
         layer.bindTooltip(
-          `${state.primaryBrand}: ${p.primary} · Others: ${p.competitor}${pctText}<br>Pop: ~${popK} · 1 store per ${popPer} people`,
+          `${state.primaryBrand}: ${p.primary} · Others: ${p.competitor}${pctText}<br>Pop: ~${popK} · 1 per ${popPer} people${unlocNote}`,
           { sticky: true }
         );
       }
@@ -579,7 +658,9 @@ function buildHexLayer() {
       const pts = turf.pointsWithinPolygon(points, hex);
       hex.properties.count = pts.features.length;
       hex.properties.estPop = estimateHexPopulation(hex);
-      if (hex.properties.count > maxCount) maxCount = hex.properties.count;
+      hex.properties.unlocated = estimateUnlocatedWeight(hex, brandFilter);
+      hex.properties.adjustedCount = hex.properties.count + hex.properties.unlocated;
+      if (hex.properties.adjustedCount > maxCount) maxCount = hex.properties.adjustedCount;
       if (hex.properties.estPop > maxPop) maxPop = hex.properties.estPop;
     });
 
@@ -588,19 +669,22 @@ function buildHexLayer() {
 
     state.hexLayer = L.geoJSON({ type: "FeatureCollection", features: allHexes }, {
       style: f => ({
-        fillColor: hexFillDensity(f.properties.count, maxCount, f.properties.estPop, maxPop),
+        fillColor: hexFillDensity(f.properties.adjustedCount, maxCount, f.properties.estPop, maxPop),
         fillOpacity: 1,
         weight: 1,
-        color: hexStrokeDensity(f.properties.count, maxCount, f.properties.estPop, maxPop),
+        color: hexStrokeDensity(f.properties.adjustedCount, maxCount, f.properties.estPop, maxPop),
         opacity: 1
       }),
       onEachFeature: (feature, layer) => {
         const c = feature.properties.count;
+        const unloc = feature.properties.unlocated;
         const pop = feature.properties.estPop;
         const popK = pop > 1000 ? (pop / 1000).toFixed(1) + 'k' : pop;
-        const popPer = (c > 0 && pop > 0) ? (pop / c).toLocaleString('en', {maximumFractionDigits: 0}) : '—';
-        const popLine = pop > 0 ? `<br>Pop: ~${popK}` + (c > 0 ? ` · 1 store per ${popPer} people` : '') : '';
-        layer.bindTooltip(`${c} location${c !== 1 ? 's' : ''}${popLine}`, { sticky: true });
+        const adjCount = c + unloc;
+        const popPer = (adjCount > 0 && pop > 0) ? (pop / adjCount).toLocaleString('en', {maximumFractionDigits: 0}) : '—';
+        const unlocNote = unloc > 0.1 ? ` (+${unloc.toFixed(1)} est.)` : '';
+        const popLine = pop > 0 ? `<br>Pop: ~${popK}` + (adjCount > 0 ? ` · 1 per ${popPer} people` : '') : '';
+        layer.bindTooltip(`${c} location${c !== 1 ? 's' : ''}${unlocNote}${popLine}`, { sticky: true });
       }
     }).addTo(state.map);
   }
@@ -1299,10 +1383,16 @@ function generateGuesstimateData() {
     entrantData = { brandTotals, hhi, hhiLabel, avgStoresPerBrand, underserved, mostCompetitive };
   }
 
+  // Unlocated store summary
+  const unlocatedTotal = state.totalUnlocated || 0;
+  const unlocatedByRegion = state.unlocatedStores || {};
+  const cityNullTotal = Object.values(state.cityNullStores || {}).reduce((s, r) => s + r._total, 0);
+
   return {
     focusBrand, saturation, nationalShare, focusTotal, totalAll,
     regionInsights, whitespace, strongRegions, weakRegions, regionLabel,
-    isHeatmap, competitors, entrantData, regionData, avgDensity, londonDensity
+    isHeatmap, competitors, entrantData, regionData, avgDensity, londonDensity,
+    unlocatedTotal, cityNullTotal, unlocatedByRegion
   };
 }
 
@@ -1317,11 +1407,16 @@ function refreshGuesstimate() {
   const isEntrant = !d.focusBrand;
 
   let html = '';
+  const dataQualityNote = (d.unlocatedTotal > 0 || d.cityNullTotal > 0) ? `
+    <div style="font-size:10px;color:var(--muted);padding:4px 8px;background:var(--panel2);border-radius:6px;border:1px solid var(--border);margin-bottom:8px;line-height:1.4">
+      📐 <strong>Data quality:</strong> ${d.unlocatedTotal > 0 ? `${d.unlocatedTotal} stores in metrics without exact coordinates — weighted proportionally by population into regional estimates.` : ''} ${d.cityNullTotal > 0 ? `${d.cityNullTotal} stores have coordinates but no city name — included in map density but excluded from city-level analysis.` : ''}
+    </div>` : '';
 
   if (isEntrant) {
     const e = d.entrantData;
     html = `
       <div class="guesstimate-badge">⚡ Market Entry Analysis · New Competitor Intelligence</div>
+      ${dataQualityNote}
 
       <div class="rp-kpi-grid" style="margin-bottom:12px">
         <div class="rp-kpi-card"><div class="rp-kpi-value">${fmtInt(d.totalAll)}</div><div class="rp-kpi-label">Total Market Size</div></div>
@@ -1413,6 +1508,7 @@ function refreshGuesstimate() {
   } else {
     html = `
       <div class="guesstimate-badge">⚡ Guesstimate · Based on Real Store Data${hasHeatmap ? ' + Heatmap' : ''}</div>
+      ${dataQualityNote}
 
       <div class="rp-kpi-grid" style="margin-bottom:12px">
         <div class="rp-kpi-card"><div class="rp-kpi-value">${fmtInt(d.focusTotal)}</div><div class="rp-kpi-label">${brandLabel} Stores</div></div>
@@ -1612,6 +1708,7 @@ async function main() {
     state.locationsGeojson = await loadJSON("england_locations_min.geojson");
 
     buildSpatialIndex();
+    computeUnlocatedStores();
     buildBrandList();
     buildRegionSelect();
     buildBrandSelects();
