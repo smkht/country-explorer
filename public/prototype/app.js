@@ -541,6 +541,8 @@ function buildHexLayer() {
 
     // Show ALL hexagons — empty ones get subtle population-based tint
     const allHexes = hexGrid.features;
+
+    state.hexLayer = L.geoJSON({ type: "FeatureCollection", features: allHexes }, {
       style: f => {
         const p = f.properties;
         const maxPop = state._hexMaxPop || 1;
