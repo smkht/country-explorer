@@ -70,7 +70,7 @@ const OnePager = () => {
             <p className="mb-1">
               Built in Lovable (React + Tailwind). Landing page (hero, problem cards, feature tiles with screenshots, data proof, CTA) + explorer app with 4 tabs: <strong>Overview</strong> (hex map, filters, region drilldown), <strong>Deep Review</strong> (heatmap + guesstimate), <strong>Compare</strong> (market share, regional matrix, concentration, auto-insights), <strong>Export</strong> (CSV/GeoJSON).
             </p>
-            <p>Phase 2 of MVP previewed: heatmap mode (red/green competitive win-lose) and guesstimate engine (saturation scores, gap analysis, expansion advice) — shown as toggles in Deep Review tab.
+            <p>Phase 2 of MVP previewed: heatmap mode and guesstimate engine (saturation scores, gap analysis, expansion advice).
 
             </p>
           </Section>
