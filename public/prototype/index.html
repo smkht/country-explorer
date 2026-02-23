@@ -14,7 +14,7 @@
   <!-- Thin dark sidebar -->
   <aside class="sidebar">
     <div class="sidebar-logo">
-      <svg width="24" height="24" viewBox="0 0 24 24" fill="none"><rect width="24" height="24" rx="6" fill="#3B5BFE"/><path d="M7 12l3 3 7-7" stroke="#fff" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+      <svg width="28" height="28" viewBox="0 0 28 28" fill="none"><rect width="28" height="28" rx="7" fill="#3B5BFE"/><path d="M8 14l4 4 8-8" stroke="#fff" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
     </div>
     <nav class="sidebar-nav">
       <button class="sidebar-btn active" data-tab="overview" title="Coverage Map">
@@ -34,31 +34,26 @@
     </div>
   </aside>
 
-  <!-- Main content area -->
+  <!-- Main content -->
   <div class="app-layout">
-    <!-- Map area -->
-    <div class="map-area" id="mapArea">
-      <!-- Search bar floating on map -->
+    <!-- Map -->
+    <div class="map-area">
       <div class="map-search">
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#6b7394" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
         <input type="text" placeholder="Search location" id="searchInput" />
       </div>
 
-      <!-- Map legend -->
       <div class="map-legend" id="mapLegend">
         <div class="legend-title">Location density</div>
         <div class="legend-scale">
-          <span class="legend-block" style="background:rgba(59,91,254,0.08)"></span>
-          <span class="legend-block" style="background:rgba(59,91,254,0.18)"></span>
-          <span class="legend-block" style="background:rgba(59,91,254,0.30)"></span>
-          <span class="legend-block" style="background:rgba(59,91,254,0.42)"></span>
-          <span class="legend-block" style="background:rgba(59,91,254,0.55)"></span>
-          <span class="legend-block" style="background:rgba(59,91,254,0.70)"></span>
+          <span class="legend-block" style="background:hsla(230,85%,92%,0.5)"></span>
+          <span class="legend-block" style="background:hsla(230,85%,80%,0.6)"></span>
+          <span class="legend-block" style="background:hsla(230,88%,68%,0.7)"></span>
+          <span class="legend-block" style="background:hsla(230,90%,56%,0.75)"></span>
+          <span class="legend-block" style="background:hsla(230,92%,46%,0.8)"></span>
+          <span class="legend-block" style="background:hsla(230,95%,38%,0.85)"></span>
         </div>
-        <div class="legend-labels">
-          <span>Low</span>
-          <span>High</span>
-        </div>
+        <div class="legend-labels"><span>Low</span><span>High</span></div>
       </div>
 
       <div id="map"></div>
@@ -66,92 +61,95 @@
 
     <!-- Right panel -->
     <div class="right-panel" id="rightPanel">
-      <!-- Header tabs -->
       <div class="rp-header">
         <div class="rp-tabs">
           <button class="rp-tab active" data-tab="overview">Overview</button>
-          <button class="rp-tab" data-tab="compare">Brand Compare</button>
+          <button class="rp-tab" data-tab="compare">Compare</button>
           <button class="rp-tab" data-tab="export">Export</button>
         </div>
       </div>
 
-      <!-- Overview content -->
+      <!-- ====== OVERVIEW ====== -->
       <div class="rp-content" id="overviewContent">
-        <!-- Filter row -->
-        <div class="rp-filters">
-          <div class="filter-dropdown">
-            <span>England</span>
-            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="6 9 12 15 18 9"/></svg>
-          </div>
-          <div class="filter-dropdown" id="regionDropdown">
-            <span id="regionDropdownText">All Regions</span>
-            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="6 9 12 15 18 9"/></svg>
+
+        <!-- Region selector -->
+        <div class="rp-section">
+          <div class="region-selector">
+            <div class="region-selector-label">Region</div>
+            <select id="regionSelect" class="region-select">
+              <option value="">All England</option>
+            </select>
           </div>
         </div>
 
-        <!-- Brand filter chips -->
+        <!-- KPIs -->
         <div class="rp-section">
-          <div class="rp-brand-row">
-            <div class="filter-dropdown" style="min-width:auto">
-              <span id="brandFilterLabel">All Brands</span>
-              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="6 9 12 15 18 9"/></svg>
-            </div>
-            <div class="rp-metric-toggle">
-              <select id="metricSelect">
-                <option value="count">Total locations</option>
-                <option value="density">Per 1,000 km²</option>
-              </select>
-            </div>
-          </div>
-          <div class="chips" id="brandChips"></div>
-        </div>
-
-        <!-- KPI summary -->
-        <div class="rp-section">
-          <div class="rp-kpi-bar">
-            <div class="rp-kpi">
+          <div class="rp-kpi-grid">
+            <div class="rp-kpi-card">
               <div class="rp-kpi-value" id="kpiTotal">—</div>
-              <div class="rp-kpi-label">Locations</div>
+              <div class="rp-kpi-label">Total Locations</div>
             </div>
-            <div class="rp-kpi-divider"></div>
-            <div class="rp-kpi">
+            <div class="rp-kpi-card">
               <div class="rp-kpi-value" id="kpiRegions">—</div>
-              <div class="rp-kpi-label">Regions</div>
+              <div class="rp-kpi-label">Regions Active</div>
             </div>
-            <div class="rp-kpi-divider"></div>
-            <div class="rp-kpi">
+            <div class="rp-kpi-card">
               <div class="rp-kpi-value" id="kpiDense">—</div>
               <div class="rp-kpi-label">Top Region</div>
             </div>
-            <div class="rp-kpi-divider"></div>
-            <div class="rp-kpi">
+            <div class="rp-kpi-card">
               <div class="rp-kpi-value" id="kpiLondonShare">—</div>
-              <div class="rp-kpi-label">London %</div>
+              <div class="rp-kpi-label">London Share</div>
             </div>
           </div>
         </div>
 
-        <!-- Region detail -->
+        <!-- Brands section -->
         <div class="rp-section">
           <div class="rp-section-header">
-            <span id="selectedRegionText">Click a region to drill down</span>
+            <span>Brands</span>
+            <div class="rp-header-actions">
+              <button class="rp-link-btn" id="selectAllBrands">All</button>
+              <span class="rp-link-sep">·</span>
+              <button class="rp-link-btn" id="selectTop3Brands">Top 3</button>
+            </div>
+          </div>
+          <div id="brandList" class="brand-list"></div>
+        </div>
+
+        <!-- Metric selector -->
+        <div class="rp-section">
+          <div class="rp-section-header"><span>Map Metric</span></div>
+          <div class="metric-toggles">
+            <button class="metric-toggle active" data-metric="count">Total locations</button>
+            <button class="metric-toggle" data-metric="density">Per 1,000 km²</button>
+          </div>
+        </div>
+
+        <!-- Region detail (appears when region selected) -->
+        <div class="rp-section" id="regionDetailSection">
+          <div class="rp-section-header">
+            <span id="selectedRegionText">Region Details</span>
             <button class="rp-clear-btn hidden" id="clearRegion">✕</button>
           </div>
 
           <div id="regionEmpty" class="rp-empty">
-            Click a hexagonal area on the map to see brand breakdowns and top cities.
+            Select a region from the dropdown or click the map to see detailed breakdowns.
           </div>
 
           <div id="regionDetails" class="hidden">
-            <div class="rp-kpi-bar compact">
-              <div class="rp-kpi">
+            <div class="rp-kpi-grid compact">
+              <div class="rp-kpi-card small">
                 <div class="rp-kpi-value" id="regionTotal">—</div>
                 <div class="rp-kpi-label">Locations</div>
               </div>
-              <div class="rp-kpi-divider"></div>
-              <div class="rp-kpi">
+              <div class="rp-kpi-card small">
                 <div class="rp-kpi-value" id="regionTopBrand">—</div>
                 <div class="rp-kpi-label" id="regionTopBrandHint">Top Brand</div>
+              </div>
+              <div class="rp-kpi-card small">
+                <div class="rp-kpi-value" id="regionDensity">—</div>
+                <div class="rp-kpi-label">Per 1k km²</div>
               </div>
             </div>
 
@@ -168,7 +166,7 @@
         </div>
       </div>
 
-      <!-- Compare content -->
+      <!-- ====== COMPARE ====== -->
       <div class="rp-content hidden" id="compareContent">
         <div class="rp-section">
           <p class="rp-desc">Compare brand footprints across England — total locations, London concentration, and regional strengths.</p>
@@ -176,10 +174,10 @@
         </div>
       </div>
 
-      <!-- Export content -->
+      <!-- ====== EXPORT ====== -->
       <div class="rp-content hidden" id="exportContent">
         <div class="rp-section">
-          <p class="rp-desc">Download the currently selected brands (and optionally a specific region) in your preferred format.</p>
+          <p class="rp-desc">Download the currently selected brands and region in your preferred format.</p>
           <div class="export-buttons">
             <button class="export-btn" id="exportCsv">
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
@@ -189,6 +187,11 @@
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0118 0z"/><circle cx="12" cy="10" r="3"/></svg>
               Download GeoJSON
             </button>
+          </div>
+          <div class="export-info">
+            <div class="export-info-row"><span class="export-info-label">Brands:</span><span id="exportBrandsInfo">—</span></div>
+            <div class="export-info-row"><span class="export-info-label">Region:</span><span id="exportRegionInfo">All England</span></div>
+            <div class="export-info-row"><span class="export-info-label">Records:</span><span id="exportCountInfo">—</span></div>
           </div>
           <div class="rp-footnote">In production: scheduled exports, shareable links, and API access for BI tools.</div>
         </div>
