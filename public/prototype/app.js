@@ -523,18 +523,21 @@ function buildHexLayer() {
       hex.properties.estPop = estimateHexPopulation(hex);
     });
 
-    const nonEmpty = hexGrid.features.filter(h => h.properties.total > 0);
+    // Show ALL hexagons — empty ones get subtle outlines (like density mode)
+    const allHexes = hexGrid.features;
 
-    state.hexLayer = L.geoJSON({ type: "FeatureCollection", features: nonEmpty }, {
-      style: f => ({
-        fillColor: hexFillHeatmap(f.properties.ratio),
-        fillOpacity: 1,
-        weight: 1,
-        color: hexStrokeHeatmap(f.properties.ratio),
-        opacity: 1
-      }),
+    state.hexLayer = L.geoJSON({ type: "FeatureCollection", features: allHexes }, {
+      style: f => {
+        const p = f.properties;
+        if (p.total === 0) return { fillColor: "hsla(230,20%,92%,0.12)", fillOpacity: 1, weight: 1, color: "rgba(59,91,254,0.15)", opacity: 1 };
+        return { fillColor: hexFillHeatmap(p.ratio), fillOpacity: 1, weight: 1, color: hexStrokeHeatmap(p.ratio), opacity: 1 };
+      },
       onEachFeature: (feature, layer) => {
         const p = feature.properties;
+        if (p.total === 0) {
+          layer.bindTooltip('No stores in this area', { sticky: true });
+          return;
+        }
         const pctText = !isNaN(p.ratio) ? ` (${(p.ratio * 100).toFixed(0)}% ${state.primaryBrand})` : '';
         const pop = p.estPop;
         const popPer = pop > 0 ? (pop / Math.max(1, p.total)).toLocaleString('en', {maximumFractionDigits: 0}) : '—';
