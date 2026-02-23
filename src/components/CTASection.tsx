@@ -16,7 +16,7 @@ const CTASection = () => (
           Country Explorer for Restaurant Chains
         </div>
         <h2 className="text-3xl md:text-4xl font-bold text-primary-foreground mb-4 tracking-tight">
-          Ready to map your restaurant market?
+          Ready to map your competition?
         </h2>
         <p className="text-primary-foreground/80 text-lg mb-8 max-w-xl mx-auto leading-relaxed">
           Explore the interactive prototype — see restaurant coverage maps, chain comparisons, and exportable data for England.
