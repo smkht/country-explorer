@@ -15,7 +15,7 @@ const Hero = () => (
       >
         <div className="inline-flex items-center gap-2 rounded-full bg-accent px-4 py-1.5 text-sm font-medium text-accent-foreground mb-6">
           <MapPin className="w-3.5 h-3.5" />
-          Country Explorer for Restaurant Chains
+          Country Explorer
         </div>
         <h1 className="text-4xl md:text-6xl font-bold text-foreground leading-tight tracking-tight mb-6">
           Map your competitors{" "}
