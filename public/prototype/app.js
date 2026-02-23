@@ -974,7 +974,7 @@ function rebuildLocationsLayer() {
     if (cityFilter) {
       const cityFeats = feats.filter(f => (f.properties.city || "").trim().toLowerCase() === cityFilter.toLowerCase());
       // Fall back to region dots if city field is missing/sparse
-      if (cityFeats.length >= 3) {
+      if (cityFeats.length >= 10) {
         feats = cityFeats;
       }
       // else: keep all region feats as fallback
