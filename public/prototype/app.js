@@ -566,6 +566,52 @@ function buildHexLayer() {
     return 0;
   }
 
+// ── Guesstimate opportunity colors (golden gradient) ──
+function hexStyleGuesstimate(props) {
+  const opp = props.opportunity || 0;
+  const count = props.adjustedCount || 0;
+  const pop = props.estPop || 0;
+
+  if (pop === 0 && count === 0) {
+    return { fillColor: 'hsla(0,0%,94%,0.04)', fillOpacity: 1, weight: 0.5, color: 'rgba(0,0,0,0.03)', opacity: 1 };
+  }
+
+  if (count === 0) {
+    // No stores but has population — golden opportunity highlight
+    const t = Math.min(1, opp);
+    return {
+      fillColor: `hsla(${45 - 5 * t}, ${60 + 30 * t}%, ${88 - 30 * t}%, ${0.15 + 0.55 * t})`,
+      fillOpacity: 1,
+      weight: 1,
+      color: `hsla(40, ${50 + 30 * t}%, ${60 - 15 * t}%, ${0.15 + 0.4 * t})`,
+      opacity: 1
+    };
+  }
+
+  // Has stores: blend from golden (high opportunity) to cool blue-grey (saturated)
+  const t = Math.min(1, opp);
+  if (t > 0.5) {
+    // More opportunity than saturation — warm golden
+    const p = (t - 0.5) / 0.5;
+    return {
+      fillColor: `hsla(${45 - 5 * p}, ${50 + 30 * p}%, ${75 - 20 * p}%, ${0.25 + 0.4 * p})`,
+      fillOpacity: 1,
+      weight: 1,
+      color: `hsla(40, ${40 + 20 * p}%, ${55 - 10 * p}%, ${0.2 + 0.3 * p})`,
+      opacity: 1
+    };
+  } else {
+    // More saturated — cool blue-grey
+    const p = t / 0.5; // 0 = fully saturated, 1 = mid
+    return {
+      fillColor: `hsla(${220 + 20 * p}, ${30 + 20 * p}%, ${82 - 15 * (1 - p)}%, ${0.2 + 0.3 * (1 - p)})`,
+      fillOpacity: 1,
+      weight: 1,
+      color: `hsla(220, ${20 + 15 * p}%, ${70 - 10 * (1 - p)}%, ${0.15 + 0.2 * (1 - p)})`,
+      opacity: 1
+    };
+  }
+}
 
   const bounds = state.map.getBounds().pad(0.15);
   const bbox = [bounds.getWest(), bounds.getSouth(), bounds.getEast(), bounds.getNorth()];
@@ -652,16 +698,16 @@ function buildHexLayer() {
     }).addTo(state.map);
 
   } else {
-  let maxCount = 0;
+    let maxCount = 0;
     let maxPop = 0;
     const isDensityMetric = state.metric === "density";
+    const isGuesstimate = state.guesstimateMode && !isHeatmap;
     hexGrid.features.forEach(hex => {
       const pts = turf.pointsWithinPolygon(points, hex);
       hex.properties.count = pts.features.length;
       hex.properties.estPop = estimateHexPopulation(hex);
       hex.properties.unlocated = estimateUnlocatedWeight(hex, brandFilter);
       hex.properties.adjustedCount = hex.properties.count + hex.properties.unlocated;
-      // For density metric, normalize by hex area (per 1000 km²)
       if (isDensityMetric) {
         const hexAreaKm2 = turf.area(hex) / 1e6;
         hex.properties.displayValue = hexAreaKm2 > 0 ? hex.properties.adjustedCount / (hexAreaKm2 / 1000) : 0;
@@ -672,17 +718,38 @@ function buildHexLayer() {
       if (hex.properties.estPop > maxPop) maxPop = hex.properties.estPop;
     });
 
-    // Show ALL hexagons — empty ones get population-based tint
+    // Guesstimate: compute opportunity score per hex (high pop + low stores = opportunity)
+    if (isGuesstimate) {
+      hexGrid.features.forEach(hex => {
+        const pop = hex.properties.estPop || 0;
+        const adj = hex.properties.adjustedCount || 0;
+        const popNorm = maxPop > 0 ? pop / maxPop : 0;
+        const storeNorm = maxCount > 0 ? adj / maxCount : 0;
+        // Opportunity = high population, low saturation
+        hex.properties.opportunity = popNorm > 0 ? Math.min(1, popNorm * (1 - storeNorm * 0.7)) : 0;
+        // Per-capita metric: people per store (higher = more opportunity)
+        hex.properties.popPerStore = adj > 0 ? pop / adj : (pop > 0 ? Infinity : 0);
+      });
+      // Normalize popPerStore for coloring
+      const finitePPS = hexGrid.features.map(h => h.properties.popPerStore).filter(v => isFinite(v) && v > 0);
+      state._maxPopPerStore = finitePPS.length > 0 ? Math.max(...finitePPS) : 1;
+    }
+
     const allHexes = hexGrid.features;
 
     state.hexLayer = L.geoJSON({ type: "FeatureCollection", features: allHexes }, {
-      style: f => ({
-        fillColor: hexFillDensity(f.properties.displayValue, maxCount, f.properties.estPop, maxPop),
-        fillOpacity: 1,
-        weight: 1,
-        color: hexStrokeDensity(f.properties.displayValue, maxCount, f.properties.estPop, maxPop),
-        opacity: 1
-      }),
+      style: f => {
+        if (isGuesstimate) {
+          return hexStyleGuesstimate(f.properties);
+        }
+        return {
+          fillColor: hexFillDensity(f.properties.displayValue, maxCount, f.properties.estPop, maxPop),
+          fillOpacity: 1,
+          weight: 1,
+          color: hexStrokeDensity(f.properties.displayValue, maxCount, f.properties.estPop, maxPop),
+          opacity: 1
+        };
+      },
       onEachFeature: (feature, layer) => {
         const c = feature.properties.count;
         const unloc = feature.properties.unlocated;
@@ -693,7 +760,14 @@ function buildHexLayer() {
         const unlocNote = unloc > 0.1 ? ` (+${unloc.toFixed(1)} est.)` : '';
         const popLine = pop > 0 ? `<br>Pop: ~${popK}` + (adjCount > 0 ? ` · 1 per ${popPer} people` : '') : '';
         const densityLine = isDensityMetric ? `<br>Density: ${feature.properties.displayValue.toFixed(1)} per 1k km²` : '';
-        layer.bindTooltip(`${c} location${c !== 1 ? 's' : ''}${unlocNote}${popLine}${densityLine}`, { sticky: true });
+        if (isGuesstimate) {
+          const opp = feature.properties.opportunity || 0;
+          const oppPct = Math.round(opp * 100);
+          const oppLabel = oppPct >= 70 ? '🔥 High opportunity' : oppPct >= 40 ? '⚡ Moderate opportunity' : oppPct > 5 ? '📍 Low opportunity' : '';
+          layer.bindTooltip(`${c} location${c !== 1 ? 's' : ''}${unlocNote}${popLine}<br>Opportunity: ${oppPct}% ${oppLabel}`, { sticky: true });
+        } else {
+          layer.bindTooltip(`${c} location${c !== 1 ? 's' : ''}${unlocNote}${popLine}${densityLine}`, { sticky: true });
+        }
       }
     }).addTo(state.map);
   }
@@ -714,6 +788,15 @@ function updateLegend() {
       <span class="legend-block" style="background:#FFEB3B"></span>
       <span class="legend-block" style="background:#8BC34A"></span>
       <span class="legend-block" style="background:#4CAF50"></span>
+    `;
+  } else if (state.guesstimateMode) {
+    title.textContent = "⚡ Opportunity map";
+    scale.innerHTML = `
+      <span class="legend-block" style="background:hsla(220,40%,82%,0.4)"></span>
+      <span class="legend-block" style="background:hsla(45,50%,75%,0.4)"></span>
+      <span class="legend-block" style="background:hsla(42,70%,65%,0.55)"></span>
+      <span class="legend-block" style="background:hsla(40,80%,55%,0.65)"></span>
+      <span class="legend-block" style="background:hsla(38,90%,45%,0.75)"></span>
     `;
   } else {
     title.textContent = "Location density";
@@ -1714,6 +1797,8 @@ function wireUI() {
   // Guesstimate toggle
   document.getElementById("guesstimateToggle").addEventListener("change", e => {
     state.guesstimateMode = e.target.checked;
+    buildHexLayer();
+    updateLegend();
     if (state.guesstimateMode) refreshGuesstimate();
     else document.getElementById("guesstimatePanel").classList.add("hidden");
   });
