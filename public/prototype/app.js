@@ -805,10 +805,13 @@ function refreshAll() {
 
 function refreshKPIs() {
   const selected = selectedArr();
+  const regionFilter = state.selectedRegion;
   let total = 0, london = 0, regionsCovered = 0;
   let bestRegion = null, bestVal = -1;
 
-  state.metrics.regions.forEach(r => {
+  const regionsToCheck = regionFilter ? [regionFilter] : state.metrics.regions;
+
+  regionsToCheck.forEach(r => {
     const counts = state.metrics.region_brand_counts[r] || {};
     let t = 0;
     selected.forEach(b => t += (counts[b] || 0));
@@ -819,8 +822,9 @@ function refreshKPIs() {
     if (v > bestVal) { bestVal = v; bestRegion = r; }
   });
 
+  const totalRegions = regionFilter ? 1 : 9;
   document.getElementById("kpiTotal").textContent = fmtInt(total);
-  document.getElementById("kpiRegions").textContent = `${regionsCovered}/9`;
+  document.getElementById("kpiRegions").textContent = regionFilter ? `1/1` : `${regionsCovered}/9`;
   document.getElementById("kpiDense").textContent = (bestRegion || "—").replace(" (England)", "");
   document.getElementById("kpiLondonShare").textContent = total ? fmtPct(london / total) : "—";
 }

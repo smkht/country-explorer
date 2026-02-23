@@ -36,7 +36,7 @@ const Explorer = () => {
         </div>
       </div>
       <iframe
-        src="/prototype/index.html"
+        src={`/prototype/index.html?v=${Date.now()}`}
         className="w-full flex-1 border-0"
         title="Country Explorer Prototype"
       />
