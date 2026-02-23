@@ -17,6 +17,19 @@ interface GeoJSON {
 }
 
 const BATCH_SIZE = 10;
+const STORAGE_KEY = "enrich-progress";
+
+// Load saved enrichment map from localStorage
+const loadSavedProgress = (): Record<string, string> => {
+  try {
+    const saved = localStorage.getItem(STORAGE_KEY);
+    return saved ? JSON.parse(saved) : {};
+  } catch { return {}; }
+};
+
+const saveCityMap = (map: Record<string, string>) => {
+  localStorage.setItem(STORAGE_KEY, JSON.stringify(map));
+};
 
 const EnrichData = () => {
   const [geojson, setGeojson] = useState<GeoJSON | null>(null);
@@ -28,6 +41,7 @@ const EnrichData = () => {
   const [done, setDone] = useState(false);
   const [log, setLog] = useState<string[]>([]);
   const abortRef = useRef(false);
+  const cityMapRef = useRef<Record<string, string>>(loadSavedProgress());
 
   const addLog = (msg: string) => setLog(prev => [...prev.slice(-200), `[${new Date().toLocaleTimeString()}] ${msg}`]);
 
@@ -36,10 +50,23 @@ const EnrichData = () => {
       addLog("Loading geojson from /prototype/england_locations_min.geojson...");
       const res = await fetch("/prototype/england_locations_min.geojson");
       const data: GeoJSON = await res.json();
+
+      // Apply any previously saved enrichments
+      const savedMap = cityMapRef.current;
+      const savedCount = Object.keys(savedMap).length;
+      if (savedCount > 0) {
+        for (const f of data.features) {
+          if (savedMap[f.properties.id]) {
+            f.properties.city = savedMap[f.properties.id];
+          }
+        }
+        addLog(`♻️ Restored ${savedCount} previously enriched cities from saved progress.`);
+      }
+
       const missing = data.features.filter(f => !f.properties.city || f.properties.city === "Unknown" || f.properties.city.trim() === "");
       setGeojson(data);
       setMissingCount(missing.length);
-      addLog(`Loaded ${data.features.length} features. ${missing.length} missing city names.`);
+      addLog(`Loaded ${data.features.length} features. ${missing.length} still missing city names.`);
     } catch (e) {
       addLog(`Error loading file: ${e}`);
     }
@@ -91,13 +118,16 @@ const EnrichData = () => {
               const entry = missing.find(m => m.feature.properties.id === result.id);
               if (entry) {
                 geojson.features[entry.idx].properties.city = result.city;
+                cityMapRef.current[result.id] = result.city;
                 totalEnriched++;
               }
             } else {
               totalFailed++;
             }
           }
-          addLog(`✅ Batch ${Math.floor(i / BATCH_SIZE) + 1}: ${data.results.filter((r: any) => r.city).length}/${batch.length} enriched`);
+          // Save progress to localStorage after each batch
+          saveCityMap(cityMapRef.current);
+          addLog(`✅ Batch ${Math.floor(i / BATCH_SIZE) + 1}: ${data.results.filter((r: any) => r.city).length}/${batch.length} enriched (saved to browser)`);
         }
       } catch (e) {
         addLog(`❌ Request failed: ${e}`);
