@@ -663,7 +663,11 @@ function hexStyleGuesstimate(props) {
         const total = hex.properties.adjustedTotal || 0;
 
         // Gate: must have minimum population density (~200 ppl/km²)
-        if (density < 200 || pop < 500) {
+        // Zoom-aware population gate: at city zoom, hex cells are tiny so
+        // region-average population estimates are very low. Relax thresholds.
+        const minDensity = zoom >= 12 ? 20 : zoom >= 10 ? 80 : 200;
+        const minPop = zoom >= 12 ? 10 : zoom >= 10 ? 100 : 500;
+        if (density < minDensity || pop < minPop) {
           hex.properties.opportunity = 0;
           hex.properties.oppRank = 0;
           return;
@@ -709,8 +713,9 @@ function hexStyleGuesstimate(props) {
       candidates.slice(majorCount, majorCount + midCount).forEach(h => { h.properties.oppRank = 2; });
     }
 
-    // Only show ranked opportunity hexes + cells with stores when in guesstimate mode
-    const displayHexes = isGuessHeat
+    // At city zoom (>=12), show all hexes to fill the grid; otherwise filter
+    const showAll = zoom >= 12;
+    const displayHexes = isGuessHeat && !showAll
       ? hexGrid.features.filter(h => (h.properties.oppRank > 0) || h.properties.total > 0)
       : hexGrid.features;
 
@@ -805,7 +810,10 @@ function hexStyleGuesstimate(props) {
         const hexAreaKm2 = turf.area(hex) / 1e6;
         const density = hexAreaKm2 > 0 ? pop / hexAreaKm2 : 0;
 
-        if (density < 200 || pop < 500) {
+        // Zoom-aware population gate
+        const minDensity = zoom >= 12 ? 20 : zoom >= 10 ? 80 : 200;
+        const minPop = zoom >= 12 ? 10 : zoom >= 10 ? 100 : 500;
+        if (density < minDensity || pop < minPop) {
           hex.properties.opportunity = 0;
           hex.properties.oppRank = 0;
           return;
@@ -847,7 +855,9 @@ function hexStyleGuesstimate(props) {
       candidates.slice(majorCount, majorCount + midCount).forEach(h => { h.properties.oppRank = 2; });
     }
 
-    const displayHexes = isGuesstimate
+    // At city zoom (>=12), show all hexes for full coverage
+    const showAll = zoom >= 12;
+    const displayHexes = isGuesstimate && !showAll
       ? hexGrid.features.filter(h => (h.properties.oppRank > 0) || h.properties.count > 0)
       : hexGrid.features;
 
