@@ -218,9 +218,11 @@ body { font-family: var(--sans); background: var(--bg); color: var(--text); -web
   .sidebar { display: none; }
   .app-layout { flex-direction: column; height: 100%; }
   .map-area { height: 40vh; flex-shrink: 0; }
-  .right-panel { width: 100%; flex: 1; min-height: 0; border-left: none; border-top: 1px solid var(--border); overflow: hidden; }
-  .rp-geo-bar { padding: 10px 12px; }
+  .right-panel { width: 100%; flex: 1; min-height: 0; border-left: none; border-top: 1px solid var(--border); overflow-y: auto; }
+  .rp-geo-bar { padding: 10px 12px; flex-shrink: unset; }
   .rp-geo-bar .geo-selectors { flex-direction: column; gap: 6px; }
   .rp-geo-bar .geo-selector { flex: unset; min-width: unset; }
+  .rp-header { flex-shrink: unset; position: sticky; top: 0; z-index: 5; background: var(--panel); }
+  .rp-content { overflow-y: visible; flex: unset; }
   .rp-tab { padding: 10px 8px; font-size: 12px; }
 }
