@@ -135,6 +135,20 @@ const REGION_CENTERS = {
 
 const ENGLAND_VIEW = { lat: 52.8, lon: -1.5, zoom: 6.5 };
 
+// Regional population estimates (ONS mid-2023)
+const REGION_POPULATION = {
+  "East (England)": 6_350_000,
+  "East Midlands (England)": 4_880_000,
+  "London": 8_800_000,
+  "North East (England)": 2_650_000,
+  "North West (England)": 7_420_000,
+  "South East (England)": 9_290_000,
+  "South West (England)": 5_710_000,
+  "West Midlands (England)": 5_950_000,
+  "Yorkshire and The Humber": 5_480_000
+};
+const ENGLAND_TOTAL_POPULATION = Object.values(REGION_POPULATION).reduce((s, v) => s + v, 0);
+
 const state = {
   selectedBrands: new Set(),
   metric: "count",
@@ -447,7 +461,29 @@ function buildHexLayer() {
   const regionFilter = state.selectedRegion;
   const isHeatmap = state.heatmapMode && state.primaryBrand;
 
-  // Always use viewport bounds for performance
+// Helper: estimate population for a hex cell based on region proportional to area
+  function estimateHexPopulation(hex) {
+    const centroid = turf.centroid(hex);
+    const [lng, lat] = centroid.geometry.coordinates;
+    const hexAreaKm2 = turf.area(hex) / 1e6; // m² to km²
+    // Find which region this hex falls in
+    if (state.regionsGeojson) {
+      for (const region of state.regionsGeojson.features) {
+        if (turf.booleanPointInPolygon(centroid, region)) {
+          const regionName = region.properties.rgn24nm || region.properties.name || '';
+          const regionPop = REGION_POPULATION[regionName] || 0;
+          const regionArea = state.metrics.region_area_km2[regionName] || 1;
+          // Proportional population estimate
+          return Math.round((hexAreaKm2 / regionArea) * regionPop);
+        }
+      }
+    }
+    // Fallback: use England-wide average
+    const totalArea = Object.values(state.metrics.region_area_km2).reduce((s, v) => s + v, 0);
+    return Math.round((hexAreaKm2 / totalArea) * ENGLAND_TOTAL_POPULATION);
+  }
+
+
   const bounds = state.map.getBounds().pad(0.15);
   const bbox = [bounds.getWest(), bounds.getSouth(), bounds.getEast(), bounds.getNorth()];
 
@@ -484,6 +520,7 @@ function buildHexLayer() {
       hex.properties.competitor = comp;
       hex.properties.total = primary + comp;
       hex.properties.ratio = (primary + comp) > 0 ? primary / (primary + comp) : NaN;
+      hex.properties.estPop = estimateHexPopulation(hex);
     });
 
     const nonEmpty = hexGrid.features.filter(h => h.properties.total > 0);
@@ -499,8 +536,11 @@ function buildHexLayer() {
       onEachFeature: (feature, layer) => {
         const p = feature.properties;
         const pctText = !isNaN(p.ratio) ? ` (${(p.ratio * 100).toFixed(0)}% ${state.primaryBrand})` : '';
+        const pop = p.estPop;
+        const popPer = pop > 0 ? (pop / Math.max(1, p.total)).toLocaleString('en', {maximumFractionDigits: 0}) : '—';
+        const popK = pop > 1000 ? (pop / 1000).toFixed(1) + 'k' : pop;
         layer.bindTooltip(
-          `${state.primaryBrand}: ${p.primary} · Others: ${p.competitor}${pctText}`,
+          `${state.primaryBrand}: ${p.primary} · Others: ${p.competitor}${pctText}<br>Pop: ~${popK} · 1 store per ${popPer} people`,
           { sticky: true }
         );
       }
@@ -511,6 +551,7 @@ function buildHexLayer() {
     hexGrid.features.forEach(hex => {
       const pts = turf.pointsWithinPolygon(points, hex);
       hex.properties.count = pts.features.length;
+      hex.properties.estPop = estimateHexPopulation(hex);
       if (hex.properties.count > maxCount) maxCount = hex.properties.count;
     });
 
@@ -527,7 +568,11 @@ function buildHexLayer() {
       }),
       onEachFeature: (feature, layer) => {
         const c = feature.properties.count;
-        layer.bindTooltip(`${c} location${c !== 1 ? 's' : ''}`, { sticky: true });
+        const pop = feature.properties.estPop;
+        const popK = pop > 1000 ? (pop / 1000).toFixed(1) + 'k' : pop;
+        const popPer = (c > 0 && pop > 0) ? (pop / c).toLocaleString('en', {maximumFractionDigits: 0}) : '—';
+        const popLine = pop > 0 ? `<br>Pop: ~${popK}` + (c > 0 ? ` · 1 store per ${popPer} people` : '') : '';
+        layer.bindTooltip(`${c} location${c !== 1 ? 's' : ''}${popLine}`, { sticky: true });
       }
     }).addTo(state.map);
   }
