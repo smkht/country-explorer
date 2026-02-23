@@ -11,7 +11,7 @@
 </head>
 <body>
 
-  <!-- Thin dark sidebar -->
+  <!-- Sidebar -->
   <aside class="sidebar">
     <div class="sidebar-logo">
       <svg width="28" height="28" viewBox="0 0 28 28" fill="none"><rect width="28" height="28" rx="7" fill="#3B5BFE"/><path d="M8 14l4 4 8-8" stroke="#fff" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
@@ -44,8 +44,8 @@
       </div>
 
       <div class="map-legend" id="mapLegend">
-        <div class="legend-title">Location density</div>
-        <div class="legend-scale">
+        <div class="legend-title" id="legendTitle">Location density</div>
+        <div class="legend-scale" id="legendScale">
           <span class="legend-block" style="background:hsla(230,85%,92%,0.5)"></span>
           <span class="legend-block" style="background:hsla(230,85%,80%,0.6)"></span>
           <span class="legend-block" style="background:hsla(230,88%,68%,0.7)"></span>
@@ -54,6 +54,15 @@
           <span class="legend-block" style="background:hsla(230,95%,38%,0.85)"></span>
         </div>
         <div class="legend-labels"><span>Low</span><span>High</span></div>
+      </div>
+
+      <!-- No data overlay -->
+      <div class="no-data-overlay hidden" id="noDataOverlay">
+        <div class="no-data-card">
+          <div class="no-data-icon">🌍</div>
+          <div class="no-data-title">No data available yet</div>
+          <div class="no-data-desc">We're working on adding coverage data for this country. Check back soon!</div>
+        </div>
       </div>
 
       <div id="map"></div>
@@ -72,18 +81,61 @@
       <!-- ====== OVERVIEW ====== -->
       <div class="rp-content" id="overviewContent">
 
-        <!-- Region selector -->
+        <!-- Country & Region selectors -->
         <div class="rp-section">
-          <div class="region-selector">
-            <div class="region-selector-label">Region</div>
-            <select id="regionSelect" class="region-select">
-              <option value="">All England</option>
-            </select>
+          <div class="geo-selectors">
+            <div class="geo-selector">
+              <div class="geo-label">Country</div>
+              <select id="countrySelect" class="geo-select">
+                <option value="england" selected>England</option>
+                <optgroup label="European Union">
+                  <option value="austria">Austria</option>
+                  <option value="belgium">Belgium</option>
+                  <option value="bulgaria">Bulgaria</option>
+                  <option value="croatia">Croatia</option>
+                  <option value="cyprus">Cyprus</option>
+                  <option value="czech">Czech Republic</option>
+                  <option value="denmark">Denmark</option>
+                  <option value="estonia">Estonia</option>
+                  <option value="finland">Finland</option>
+                  <option value="france">France</option>
+                  <option value="germany">Germany</option>
+                  <option value="greece">Greece</option>
+                  <option value="hungary">Hungary</option>
+                  <option value="ireland">Ireland</option>
+                  <option value="italy">Italy</option>
+                  <option value="latvia">Latvia</option>
+                  <option value="lithuania">Lithuania</option>
+                  <option value="luxembourg">Luxembourg</option>
+                  <option value="malta">Malta</option>
+                  <option value="netherlands">Netherlands</option>
+                  <option value="poland">Poland</option>
+                  <option value="portugal">Portugal</option>
+                  <option value="romania">Romania</option>
+                  <option value="slovakia">Slovakia</option>
+                  <option value="slovenia">Slovenia</option>
+                  <option value="spain">Spain</option>
+                  <option value="sweden">Sweden</option>
+                </optgroup>
+              </select>
+            </div>
+            <div class="geo-selector">
+              <div class="geo-label">Region</div>
+              <select id="regionSelect" class="geo-select">
+                <option value="">All Regions</option>
+              </select>
+            </div>
+            <div class="geo-selector" id="citySelectorWrap" style="display:none">
+              <div class="geo-label">City</div>
+              <select id="citySelect" class="geo-select">
+                <option value="">All Cities</option>
+              </select>
+            </div>
           </div>
         </div>
 
         <!-- KPIs -->
-        <div class="rp-section">
+        <div class="rp-section" id="kpiSection">
           <div class="rp-kpi-grid">
             <div class="rp-kpi-card">
               <div class="rp-kpi-value" id="kpiTotal">—</div>
@@ -104,8 +156,41 @@
           </div>
         </div>
 
+        <!-- Heatmap mode -->
+        <div class="rp-section" id="heatmapSection">
+          <div class="rp-section-header">
+            <span>Heatmap Mode</span>
+            <label class="toggle-switch">
+              <input type="checkbox" id="heatmapToggle" />
+              <span class="toggle-slider"></span>
+            </label>
+          </div>
+          <div id="heatmapSettings" class="heatmap-settings hidden">
+            <div class="heatmap-row">
+              <div class="geo-label">Primary Brand</div>
+              <select id="primaryBrandSelect" class="geo-select"></select>
+            </div>
+            <div class="heatmap-row">
+              <div class="geo-label">Compare Against</div>
+              <select id="compareModeSelect" class="geo-select">
+                <option value="all">All other brands</option>
+                <option value="pick">Pick specific brand</option>
+              </select>
+            </div>
+            <div class="heatmap-row hidden" id="secondaryBrandRow">
+              <div class="geo-label">Secondary Brand</div>
+              <select id="secondaryBrandSelect" class="geo-select"></select>
+            </div>
+            <div class="heatmap-legend-bar">
+              <div class="heatmap-legend-label">Fewer stores</div>
+              <div class="heatmap-legend-gradient"></div>
+              <div class="heatmap-legend-label">More stores</div>
+            </div>
+          </div>
+        </div>
+
         <!-- Brands section -->
-        <div class="rp-section">
+        <div class="rp-section" id="brandsSection">
           <div class="rp-section-header">
             <span>Brands</span>
             <div class="rp-header-actions">
@@ -117,8 +202,8 @@
           <div id="brandList" class="brand-list"></div>
         </div>
 
-        <!-- Metric selector -->
-        <div class="rp-section">
+        <!-- Metric -->
+        <div class="rp-section" id="metricSection">
           <div class="rp-section-header"><span>Map Metric</span></div>
           <div class="metric-toggles">
             <button class="metric-toggle active" data-metric="count">Total locations</button>
@@ -126,38 +211,23 @@
           </div>
         </div>
 
-        <!-- Region detail (appears when region selected) -->
+        <!-- Region detail -->
         <div class="rp-section" id="regionDetailSection">
           <div class="rp-section-header">
             <span id="selectedRegionText">Region Details</span>
             <button class="rp-clear-btn hidden" id="clearRegion">✕</button>
           </div>
-
-          <div id="regionEmpty" class="rp-empty">
-            Select a region from the dropdown or click the map to see detailed breakdowns.
-          </div>
-
+          <div id="regionEmpty" class="rp-empty">Select a region from the dropdown or click the map.</div>
           <div id="regionDetails" class="hidden">
             <div class="rp-kpi-grid compact">
-              <div class="rp-kpi-card small">
-                <div class="rp-kpi-value" id="regionTotal">—</div>
-                <div class="rp-kpi-label">Locations</div>
-              </div>
-              <div class="rp-kpi-card small">
-                <div class="rp-kpi-value" id="regionTopBrand">—</div>
-                <div class="rp-kpi-label" id="regionTopBrandHint">Top Brand</div>
-              </div>
-              <div class="rp-kpi-card small">
-                <div class="rp-kpi-value" id="regionDensity">—</div>
-                <div class="rp-kpi-label">Per 1k km²</div>
-              </div>
+              <div class="rp-kpi-card small"><div class="rp-kpi-value" id="regionTotal">—</div><div class="rp-kpi-label">Locations</div></div>
+              <div class="rp-kpi-card small"><div class="rp-kpi-value" id="regionTopBrand">—</div><div class="rp-kpi-label" id="regionTopBrandHint">Top Brand</div></div>
+              <div class="rp-kpi-card small"><div class="rp-kpi-value" id="regionDensity">—</div><div class="rp-kpi-label">Per 1k km²</div></div>
             </div>
-
             <div class="rp-table-section">
               <div class="rp-table-title">Brand Mix</div>
               <table class="table" id="regionBrandTable"></table>
             </div>
-
             <div class="rp-table-section">
               <div class="rp-table-title">Top Cities</div>
               <table class="table" id="regionCityTable"></table>
@@ -169,7 +239,7 @@
       <!-- ====== COMPARE ====== -->
       <div class="rp-content hidden" id="compareContent">
         <div class="rp-section">
-          <p class="rp-desc">Compare brand footprints across England — total locations, London concentration, and regional strengths.</p>
+          <p class="rp-desc">Compare brand footprints — total locations, London concentration, and regional strengths.</p>
           <table class="table" id="compareTable"></table>
         </div>
       </div>
@@ -177,7 +247,7 @@
       <!-- ====== EXPORT ====== -->
       <div class="rp-content hidden" id="exportContent">
         <div class="rp-section">
-          <p class="rp-desc">Download the currently selected brands and region in your preferred format.</p>
+          <p class="rp-desc">Download the currently selected brands and region.</p>
           <div class="export-buttons">
             <button class="export-btn" id="exportCsv">
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
@@ -193,7 +263,7 @@
             <div class="export-info-row"><span class="export-info-label">Region:</span><span id="exportRegionInfo">All England</span></div>
             <div class="export-info-row"><span class="export-info-label">Records:</span><span id="exportCountInfo">—</span></div>
           </div>
-          <div class="rp-footnote">In production: scheduled exports, shareable links, and API access for BI tools.</div>
+          <div class="rp-footnote">In production: scheduled exports, shareable links, and API access.</div>
         </div>
       </div>
     </div>

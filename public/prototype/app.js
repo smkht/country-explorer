@@ -1,4 +1,4 @@
-/* Country Explorer — vanilla JS + Leaflet + Turf.js honeycomb */
+/* Country Explorer — vanilla JS + Leaflet + Turf.js honeycomb + heatmap mode */
 
 const BRAND_COLORS = {
   "Domino's": "#3B5BFE",
@@ -9,10 +9,138 @@ const BRAND_COLORS = {
   "Subway": "#00897B"
 };
 
+// Major cities per region with approximate coords for fly-to
+const REGION_CITIES = {
+  "East (England)": [
+    { name: "Norwich", lat: 52.6309, lon: 1.2974 },
+    { name: "Cambridge", lat: 52.2053, lon: 0.1218 },
+    { name: "Ipswich", lat: 52.0567, lon: 1.1482 },
+    { name: "Luton", lat: 51.8787, lon: -0.4200 },
+    { name: "Southend", lat: 51.5406, lon: 0.7077 },
+    { name: "Colchester", lat: 51.8959, lon: 0.8919 },
+    { name: "Chelmsford", lat: 51.7356, lon: 0.4685 },
+    { name: "Peterborough", lat: 52.5695, lon: -0.2405 },
+    { name: "Basildon", lat: 51.5761, lon: 0.4886 },
+    { name: "Bedford", lat: 52.1356, lon: -0.4668 }
+  ],
+  "East Midlands (England)": [
+    { name: "Nottingham", lat: 52.9548, lon: -1.1581 },
+    { name: "Leicester", lat: 52.6369, lon: -1.1398 },
+    { name: "Derby", lat: 52.9225, lon: -1.4746 },
+    { name: "Northampton", lat: 52.2405, lon: -0.9027 },
+    { name: "Lincoln", lat: 53.2307, lon: -0.5406 },
+    { name: "Mansfield", lat: 53.1472, lon: -1.1987 },
+    { name: "Chesterfield", lat: 53.2350, lon: -1.4210 },
+    { name: "Corby", lat: 52.4914, lon: -0.6965 },
+    { name: "Loughborough", lat: 52.7721, lon: -1.2064 },
+    { name: "Kettering", lat: 52.3969, lon: -0.7230 }
+  ],
+  "London": [
+    { name: "City of London", lat: 51.5155, lon: -0.0922 },
+    { name: "Westminster", lat: 51.4975, lon: -0.1357 },
+    { name: "Camden", lat: 51.5517, lon: -0.1588 },
+    { name: "Croydon", lat: 51.3762, lon: -0.0982 },
+    { name: "Ealing", lat: 51.5130, lon: -0.3089 },
+    { name: "Bromley", lat: 51.4039, lon: 0.0198 },
+    { name: "Enfield", lat: 51.6538, lon: -0.0799 },
+    { name: "Barnet", lat: 51.6252, lon: -0.1517 },
+    { name: "Lewisham", lat: 51.4535, lon: -0.0205 },
+    { name: "Hackney", lat: 51.5450, lon: -0.0553 }
+  ],
+  "North East (England)": [
+    { name: "Newcastle", lat: 54.9783, lon: -1.6178 },
+    { name: "Sunderland", lat: 54.9069, lon: -1.3838 },
+    { name: "Middlesbrough", lat: 54.5742, lon: -1.2350 },
+    { name: "Gateshead", lat: 54.9527, lon: -1.6039 },
+    { name: "Darlington", lat: 54.5235, lon: -1.5527 },
+    { name: "Hartlepool", lat: 54.6863, lon: -1.2129 },
+    { name: "Durham", lat: 54.7753, lon: -1.5849 },
+    { name: "South Shields", lat: 55.0004, lon: -1.4320 },
+    { name: "Stockton", lat: 54.5680, lon: -1.3140 },
+    { name: "Blyth", lat: 55.1260, lon: -1.5084 }
+  ],
+  "North West (England)": [
+    { name: "Manchester", lat: 53.4808, lon: -2.2426 },
+    { name: "Liverpool", lat: 53.4084, lon: -2.9916 },
+    { name: "Preston", lat: 53.7632, lon: -2.7031 },
+    { name: "Bolton", lat: 53.5785, lon: -2.4299 },
+    { name: "Blackpool", lat: 53.8175, lon: -3.0357 },
+    { name: "Warrington", lat: 53.3900, lon: -2.5970 },
+    { name: "Wigan", lat: 53.5445, lon: -2.6325 },
+    { name: "Stockport", lat: 53.4106, lon: -2.1575 },
+    { name: "Blackburn", lat: 53.7500, lon: -2.4847 },
+    { name: "Burnley", lat: 53.7893, lon: -2.2479 }
+  ],
+  "South East (England)": [
+    { name: "Brighton", lat: 50.8225, lon: -0.1372 },
+    { name: "Reading", lat: 51.4543, lon: -0.9781 },
+    { name: "Southampton", lat: 50.9097, lon: -1.4044 },
+    { name: "Portsmouth", lat: 50.8198, lon: -1.0880 },
+    { name: "Oxford", lat: 51.7520, lon: -1.2577 },
+    { name: "Milton Keynes", lat: 52.0406, lon: -0.7594 },
+    { name: "Slough", lat: 51.5105, lon: -0.5950 },
+    { name: "Maidstone", lat: 51.2724, lon: 0.5290 },
+    { name: "Guildford", lat: 51.2362, lon: -0.5704 },
+    { name: "Canterbury", lat: 51.2802, lon: 1.0789 }
+  ],
+  "South West (England)": [
+    { name: "Bristol", lat: 51.4545, lon: -2.5879 },
+    { name: "Plymouth", lat: 50.3755, lon: -4.1427 },
+    { name: "Exeter", lat: 50.7184, lon: -3.5339 },
+    { name: "Bournemouth", lat: 50.7192, lon: -1.8808 },
+    { name: "Swindon", lat: 51.5558, lon: -1.7797 },
+    { name: "Gloucester", lat: 51.8642, lon: -2.2382 },
+    { name: "Bath", lat: 51.3811, lon: -2.3590 },
+    { name: "Cheltenham", lat: 51.8994, lon: -2.0783 },
+    { name: "Taunton", lat: 51.0157, lon: -3.1004 },
+    { name: "Torquay", lat: 50.4619, lon: -3.5253 }
+  ],
+  "West Midlands (England)": [
+    { name: "Birmingham", lat: 52.4862, lon: -1.8904 },
+    { name: "Coventry", lat: 52.4068, lon: -1.5197 },
+    { name: "Wolverhampton", lat: 52.5870, lon: -2.1288 },
+    { name: "Stoke-on-Trent", lat: 53.0027, lon: -2.1794 },
+    { name: "Dudley", lat: 52.5085, lon: -2.0816 },
+    { name: "Walsall", lat: 52.5860, lon: -1.9829 },
+    { name: "Solihull", lat: 52.4130, lon: -1.7838 },
+    { name: "Telford", lat: 52.6766, lon: -2.4469 },
+    { name: "Worcester", lat: 52.1920, lon: -2.2216 },
+    { name: "Hereford", lat: 52.0565, lon: -2.7160 }
+  ],
+  "Yorkshire and The Humber": [
+    { name: "Leeds", lat: 53.8008, lon: -1.5491 },
+    { name: "Sheffield", lat: 53.3811, lon: -1.4701 },
+    { name: "Bradford", lat: 53.7960, lon: -1.7594 },
+    { name: "Hull", lat: 53.7457, lon: -0.3367 },
+    { name: "York", lat: 53.9600, lon: -1.0873 },
+    { name: "Huddersfield", lat: 53.6458, lon: -1.7850 },
+    { name: "Doncaster", lat: 53.5228, lon: -1.1285 },
+    { name: "Wakefield", lat: 53.6830, lon: -1.4977 },
+    { name: "Rotherham", lat: 53.4327, lon: -1.3568 },
+    { name: "Halifax", lat: 53.7248, lon: -1.8658 }
+  ]
+};
+
+// Approximate region centers for fly-to
+const REGION_CENTERS = {
+  "East (England)": { lat: 52.2, lon: 0.5, zoom: 8 },
+  "East Midlands (England)": { lat: 52.8, lon: -1.1, zoom: 8 },
+  "London": { lat: 51.51, lon: -0.12, zoom: 10 },
+  "North East (England)": { lat: 54.8, lon: -1.5, zoom: 8.5 },
+  "North West (England)": { lat: 53.6, lon: -2.6, zoom: 8 },
+  "South East (England)": { lat: 51.3, lon: -0.5, zoom: 8 },
+  "South West (England)": { lat: 51.0, lon: -3.0, zoom: 7.5 },
+  "West Midlands (England)": { lat: 52.5, lon: -2.0, zoom: 8.5 },
+  "Yorkshire and The Humber": { lat: 53.7, lon: -1.3, zoom: 8 }
+};
+
+const ENGLAND_VIEW = { lat: 52.8, lon: -1.5, zoom: 6.5 };
+
 const state = {
   selectedBrands: new Set(),
   metric: "count",
   selectedRegion: null,
+  selectedCity: null,
   metrics: null,
   regionsGeojson: null,
   locationsGeojson: null,
@@ -20,10 +148,14 @@ const state = {
   regionsLayer: null,
   locationsLayer: null,
   hexLayer: null,
-  hexDebounce: null
+  hexDebounce: null,
+  heatmapMode: false,
+  primaryBrand: null,
+  compareMode: "all",
+  secondaryBrand: null,
+  country: "england"
 };
 
-// ── Helpers ──
 const fmtInt = x => new Intl.NumberFormat("en-GB").format(x);
 const fmtPct = x => (x * 100).toFixed(1) + "%";
 
@@ -33,23 +165,46 @@ async function loadJSON(path) {
   return r.json();
 }
 
-// ── Hex color based on density ──
-function hexFill(count, max) {
+// ── Hex colors ──
+function hexFillDensity(count, max) {
   if (!max || count === 0) return "hsla(230,80%,95%,0.15)";
   const t = Math.min(1, count / max);
   const l = 90 - 50 * t;
   const a = 0.3 + 0.55 * t;
   return `hsla(230,85%,${l}%,${a})`;
 }
-function hexStroke(count, max) {
+function hexStrokeDensity(count, max) {
   if (!max || count === 0) return "rgba(59,91,254,0.06)";
   const t = Math.min(1, count / max);
   return `rgba(59,91,254,${0.08 + 0.35 * t})`;
 }
 
-// ── Compute hex cell size from zoom level ──
+// Heatmap: red (losing) → yellow (equal) → green (winning)
+function hexFillHeatmap(ratio) {
+  // ratio = primaryCount / (primaryCount + competitorCount), NaN if both 0
+  if (isNaN(ratio)) return "hsla(0,0%,90%,0.1)";
+  // 0 = all competitor, 0.5 = equal, 1 = all primary
+  const t = Math.max(0, Math.min(1, ratio));
+  if (t < 0.5) {
+    // Red → Yellow
+    const p = t / 0.5;
+    const h = p * 60; // 0→60
+    return `hsla(${h},85%,${55 - 10 * (1 - p)}%,${0.5 + 0.3 * (1 - p)})`;
+  } else {
+    // Yellow → Green
+    const p = (t - 0.5) / 0.5;
+    const h = 60 + p * 60; // 60→120
+    return `hsla(${h},70%,${50 - 5 * p}%,${0.45 + 0.25 * p})`;
+  }
+}
+function hexStrokeHeatmap(ratio) {
+  if (isNaN(ratio)) return "rgba(0,0,0,0.05)";
+  const t = Math.max(0, Math.min(1, ratio));
+  if (t < 0.5) return `rgba(229,57,53,${0.15 + 0.2 * (1 - t * 2)})`;
+  return `rgba(76,175,80,${0.15 + 0.2 * ((t - 0.5) * 2)})`;
+}
+
 function cellSizeForZoom(zoom) {
-  // Adaptive: smaller hexes as you zoom in
   if (zoom >= 12) return 1;
   if (zoom >= 11) return 1.5;
   if (zoom >= 10) return 2.5;
@@ -57,6 +212,37 @@ function cellSizeForZoom(zoom) {
   if (zoom >= 8) return 6;
   if (zoom >= 7) return 10;
   return 15;
+}
+
+// ── Country handling ──
+function setCountry(country) {
+  state.country = country;
+  const isEngland = country === "england";
+  document.getElementById("noDataOverlay").classList.toggle("hidden", isEngland);
+  document.getElementById("regionSelect").disabled = !isEngland;
+  document.getElementById("mapLegend").classList.toggle("hidden", !isEngland);
+
+  // Disable data sections
+  ["kpiSection", "brandsSection", "metricSection", "regionDetailSection", "heatmapSection"]
+    .forEach(id => {
+      document.getElementById(id).style.opacity = isEngland ? "1" : "0.3";
+      document.getElementById(id).style.pointerEvents = isEngland ? "auto" : "none";
+    });
+
+  if (isEngland) {
+    state.map.flyTo([ENGLAND_VIEW.lat, ENGLAND_VIEW.lon], ENGLAND_VIEW.zoom, { duration: 1.2 });
+    if (state.regionsLayer) state.regionsLayer.addTo(state.map);
+    buildHexLayer();
+  } else {
+    // Clear map layers
+    if (state.hexLayer) { state.hexLayer.remove(); state.hexLayer = null; }
+    if (state.locationsLayer) { state.locationsLayer.remove(); state.locationsLayer = null; }
+    if (state.regionsLayer) state.regionsLayer.remove();
+    state.selectedRegion = null;
+    state.selectedCity = null;
+    document.getElementById("regionSelect").value = "";
+    document.getElementById("citySelectorWrap").style.display = "none";
+  }
 }
 
 // ── Tab switching ──
@@ -69,7 +255,7 @@ function setTab(tab) {
   if (tab === "overview" && state.map) setTimeout(() => state.map.invalidateSize(), 100);
 }
 
-// ── Brand list (rich items with color dots + checkboxes) ──
+// ── Build brand list ──
 function buildBrandList() {
   const wrap = document.getElementById("brandList");
   wrap.innerHTML = "";
@@ -85,18 +271,9 @@ function buildBrandList() {
       <span class="brand-check"></span>
     `;
     el.onclick = () => {
-      if (state.selectedBrands.has(b)) {
-        state.selectedBrands.delete(b);
-        el.classList.add("inactive");
-      } else {
-        state.selectedBrands.add(b);
-        el.classList.remove("inactive");
-      }
-      // Don't allow 0 brands
-      if (state.selectedBrands.size === 0) {
-        state.selectedBrands.add(b);
-        el.classList.remove("inactive");
-      }
+      if (state.selectedBrands.has(b)) { state.selectedBrands.delete(b); el.classList.add("inactive"); }
+      else { state.selectedBrands.add(b); el.classList.remove("inactive"); }
+      if (state.selectedBrands.size === 0) { state.selectedBrands.add(b); el.classList.remove("inactive"); }
       refreshAll();
     };
     wrap.appendChild(el);
@@ -112,7 +289,7 @@ function setAllBrands(brands) {
   refreshAll();
 }
 
-// ── Region selector ──
+// ── Build selectors ──
 function buildRegionSelect() {
   const sel = document.getElementById("regionSelect");
   state.metrics.regions.forEach(r => {
@@ -123,129 +300,242 @@ function buildRegionSelect() {
   });
 }
 
-// ── Selected brands helper ──
-const selectedArr = () => Array.from(state.selectedBrands);
-
-// ── Region value ──
-function regionValue(regionName) {
-  const counts = state.metrics.region_brand_counts[regionName] || {};
-  const area = state.metrics.region_area_km2[regionName] || 1;
-  let total = 0;
-  selectedArr().forEach(b => total += (counts[b] || 0));
-  return state.metric === "count" ? total : total / (area / 1000);
+function buildBrandSelects() {
+  const primary = document.getElementById("primaryBrandSelect");
+  const secondary = document.getElementById("secondaryBrandSelect");
+  state.metrics.brands.forEach(b => {
+    const o1 = document.createElement("option");
+    o1.value = b; o1.textContent = b;
+    primary.appendChild(o1);
+    const o2 = document.createElement("option");
+    o2.value = b; o2.textContent = b;
+    secondary.appendChild(o2);
+  });
+  state.primaryBrand = state.metrics.brands[0];
+  state.secondaryBrand = state.metrics.brands[1];
+  primary.value = state.primaryBrand;
+  secondary.value = state.secondaryBrand;
 }
+
+function buildCitySelect(region) {
+  const wrap = document.getElementById("citySelectorWrap");
+  const sel = document.getElementById("citySelect");
+  sel.innerHTML = '<option value="">All Cities</option>';
+
+  if (!region) { wrap.style.display = "none"; return; }
+  wrap.style.display = "flex";
+
+  const cities = REGION_CITIES[region] || [];
+  cities.forEach(c => {
+    const opt = document.createElement("option");
+    opt.value = c.name;
+    opt.textContent = c.name;
+    sel.appendChild(opt);
+  });
+}
+
+const selectedArr = () => Array.from(state.selectedBrands);
 
 // ── Map ──
 function initMap() {
   const map = L.map('map', { zoomControl: true, zoomSnap: 0.5 });
   state.map = map;
-  map.setView([52.8, -1.5], 6.5);
+  map.setView([ENGLAND_VIEW.lat, ENGLAND_VIEW.lon], ENGLAND_VIEW.zoom);
 
   L.tileLayer('https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png', {
-    maxZoom: 18,
-    attribution: '© OpenStreetMap © CARTO'
+    maxZoom: 18, attribution: '© OpenStreetMap © CARTO'
   }).addTo(map);
 
-  // Thin region boundaries
   state.regionsLayer = L.geoJSON(state.regionsGeojson, {
     style: () => ({ weight: 1.2, color: "rgba(0,0,0,0.1)", fillColor: "transparent", fillOpacity: 0 }),
     onEachFeature: (feature, layer) => {
       const name = feature.properties.name;
       layer.on('click', () => {
         state.selectedRegion = (state.selectedRegion === name) ? null : name;
+        state.selectedCity = null;
         document.getElementById("regionSelect").value = state.selectedRegion || "";
+        document.getElementById("citySelect") && (document.getElementById("citySelect").value = "");
+        buildCitySelect(state.selectedRegion);
+        flyToRegion(state.selectedRegion);
         refreshAll();
       });
       layer.bindTooltip(name.replace(" (England)", ""), { sticky: true });
     }
   }).addTo(map);
 
-  // Build initial hexes
   buildHexLayer();
+  map.on('zoomend', () => { clearTimeout(state.hexDebounce); state.hexDebounce = setTimeout(() => buildHexLayer(), 150); });
+  map.on('moveend', () => { if (map.getZoom() >= 8) { clearTimeout(state.hexDebounce); state.hexDebounce = setTimeout(() => buildHexLayer(), 200); } });
+}
 
-  // Rebuild hexes on zoom (debounced)
-  map.on('zoomend', () => {
-    clearTimeout(state.hexDebounce);
-    state.hexDebounce = setTimeout(() => buildHexLayer(), 150);
-  });
+function flyToRegion(region) {
+  if (!region) {
+    state.map.flyTo([ENGLAND_VIEW.lat, ENGLAND_VIEW.lon], ENGLAND_VIEW.zoom, { duration: 1 });
+    return;
+  }
+  const center = REGION_CENTERS[region];
+  if (center) state.map.flyTo([center.lat, center.lon], center.zoom, { duration: 1 });
+}
 
-  // Also rebuild on move end at higher zoom levels for viewport culling
-  map.on('moveend', () => {
-    if (map.getZoom() >= 8) {
-      clearTimeout(state.hexDebounce);
-      state.hexDebounce = setTimeout(() => buildHexLayer(), 200);
-    }
-  });
+function flyToCity(cityName, region) {
+  const cities = REGION_CITIES[region] || [];
+  const city = cities.find(c => c.name === cityName);
+  if (city) state.map.flyTo([city.lat, city.lon], 13, { duration: 1 });
 }
 
 // ── Honeycomb layer ──
 function buildHexLayer() {
   if (state.hexLayer) { state.hexLayer.remove(); state.hexLayer = null; }
+  if (!state.map || state.country !== "england") return;
 
-  const map = state.map;
-  if (!map) return;
-
-  const zoom = map.getZoom();
+  const zoom = state.map.getZoom();
   const cellSize = cellSizeForZoom(zoom);
   const selected = selectedArr();
 
-  // Filter locations
-  const locations = state.locationsGeojson.features.filter(f =>
-    selected.includes(f.properties.brand) &&
-    (!state.selectedRegion || f.properties.region === state.selectedRegion)
-  );
+  const regionFilter = state.selectedRegion;
+  const allLocations = state.locationsGeojson.features;
+
+  // In heatmap mode, we need primary vs competitor counts per hex
+  const isHeatmap = state.heatmapMode && state.primaryBrand;
+
+  let locations;
+  if (isHeatmap) {
+    // Include primary + competitors
+    const competitors = state.compareMode === "all"
+      ? state.metrics.brands.filter(b => b !== state.primaryBrand)
+      : (state.secondaryBrand ? [state.secondaryBrand] : []);
+    const allBrands = [state.primaryBrand, ...competitors];
+    locations = allLocations.filter(f =>
+      allBrands.includes(f.properties.brand) &&
+      (!regionFilter || f.properties.region === regionFilter)
+    );
+  } else {
+    locations = allLocations.filter(f =>
+      selected.includes(f.properties.brand) &&
+      (!regionFilter || f.properties.region === regionFilter)
+    );
+  }
+
   if (locations.length === 0) return;
 
-  // Use visible bounds + some padding for performance at high zoom
   let bbox;
   if (zoom >= 8) {
-    const b = map.getBounds().pad(0.2);
+    const b = state.map.getBounds().pad(0.2);
     bbox = [b.getWest(), b.getSouth(), b.getEast(), b.getNorth()];
   } else {
     bbox = [-6.5, 49.5, 2.5, 56.5];
   }
 
   const hexGrid = turf.hexGrid(bbox, cellSize, { units: 'kilometers' });
-  const points = turf.featureCollection(
-    locations.map(f => turf.point(f.geometry.coordinates, f.properties))
-  );
+  const points = turf.featureCollection(locations.map(f => turf.point(f.geometry.coordinates, f.properties)));
 
-  let maxCount = 0;
-  hexGrid.features.forEach(hex => {
-    const pts = turf.pointsWithinPolygon(points, hex);
-    hex.properties.count = pts.features.length;
-    if (hex.properties.count > maxCount) maxCount = hex.properties.count;
-  });
+  if (isHeatmap) {
+    const competitors = state.compareMode === "all"
+      ? state.metrics.brands.filter(b => b !== state.primaryBrand)
+      : (state.secondaryBrand ? [state.secondaryBrand] : []);
 
-  const nonEmpty = hexGrid.features.filter(h => h.properties.count > 0);
+    hexGrid.features.forEach(hex => {
+      const pts = turf.pointsWithinPolygon(points, hex);
+      let primary = 0, comp = 0;
+      pts.features.forEach(p => {
+        if (p.properties.brand === state.primaryBrand) primary++;
+        else if (competitors.includes(p.properties.brand)) comp++;
+      });
+      hex.properties.primary = primary;
+      hex.properties.competitor = comp;
+      hex.properties.total = primary + comp;
+      hex.properties.ratio = (primary + comp) > 0 ? primary / (primary + comp) : NaN;
+    });
 
-  state.hexLayer = L.geoJSON({ type: "FeatureCollection", features: nonEmpty }, {
-    style: f => ({
-      fillColor: hexFill(f.properties.count, maxCount),
-      fillOpacity: 1,
-      weight: 1,
-      color: hexStroke(f.properties.count, maxCount),
-      opacity: 1
-    }),
-    onEachFeature: (feature, layer) => {
-      const c = feature.properties.count;
-      layer.bindTooltip(`${c} location${c !== 1 ? 's' : ''}`, { sticky: true });
-    }
-  }).addTo(map);
+    const nonEmpty = hexGrid.features.filter(h => h.properties.total > 0);
+
+    state.hexLayer = L.geoJSON({ type: "FeatureCollection", features: nonEmpty }, {
+      style: f => ({
+        fillColor: hexFillHeatmap(f.properties.ratio),
+        fillOpacity: 1,
+        weight: 1,
+        color: hexStrokeHeatmap(f.properties.ratio),
+        opacity: 1
+      }),
+      onEachFeature: (feature, layer) => {
+        const p = feature.properties;
+        const pctText = !isNaN(p.ratio) ? ` (${(p.ratio * 100).toFixed(0)}% ${state.primaryBrand})` : '';
+        layer.bindTooltip(
+          `${state.primaryBrand}: ${p.primary} · Others: ${p.competitor}${pctText}`,
+          { sticky: true }
+        );
+      }
+    }).addTo(state.map);
+
+  } else {
+    let maxCount = 0;
+    hexGrid.features.forEach(hex => {
+      const pts = turf.pointsWithinPolygon(points, hex);
+      hex.properties.count = pts.features.length;
+      if (hex.properties.count > maxCount) maxCount = hex.properties.count;
+    });
+
+    const nonEmpty = hexGrid.features.filter(h => h.properties.count > 0);
+
+    state.hexLayer = L.geoJSON({ type: "FeatureCollection", features: nonEmpty }, {
+      style: f => ({
+        fillColor: hexFillDensity(f.properties.count, maxCount),
+        fillOpacity: 1,
+        weight: 1,
+        color: hexStrokeDensity(f.properties.count, maxCount),
+        opacity: 1
+      }),
+      onEachFeature: (feature, layer) => {
+        const c = feature.properties.count;
+        layer.bindTooltip(`${c} location${c !== 1 ? 's' : ''}`, { sticky: true });
+      }
+    }).addTo(state.map);
+  }
 
   if (state.regionsLayer) state.regionsLayer.bringToFront();
   if (state.locationsLayer) state.locationsLayer.bringToFront();
+
+  // Update legend
+  updateLegend();
 }
 
-// ── Individual location markers (when zoomed in on a region) ──
+function updateLegend() {
+  const title = document.getElementById("legendTitle");
+  const scale = document.getElementById("legendScale");
+  if (state.heatmapMode) {
+    title.textContent = `${state.primaryBrand} vs competitors`;
+    scale.innerHTML = `
+      <span class="legend-block" style="background:#E53935"></span>
+      <span class="legend-block" style="background:#FF9800"></span>
+      <span class="legend-block" style="background:#FFEB3B"></span>
+      <span class="legend-block" style="background:#8BC34A"></span>
+      <span class="legend-block" style="background:#4CAF50"></span>
+    `;
+  } else {
+    title.textContent = "Location density";
+    scale.innerHTML = `
+      <span class="legend-block" style="background:hsla(230,85%,92%,0.5)"></span>
+      <span class="legend-block" style="background:hsla(230,85%,80%,0.6)"></span>
+      <span class="legend-block" style="background:hsla(230,88%,68%,0.7)"></span>
+      <span class="legend-block" style="background:hsla(230,90%,56%,0.75)"></span>
+      <span class="legend-block" style="background:hsla(230,95%,38%,0.85)"></span>
+    `;
+  }
+}
+
+// ── Location markers ──
 function rebuildLocationsLayer() {
   if (state.locationsLayer) { state.locationsLayer.remove(); state.locationsLayer = null; }
-  if (!state.selectedRegion) return;
+  if (!state.selectedRegion || state.country !== "england") return;
 
   const selected = selectedArr();
+  const cityFilter = state.selectedCity;
   const feats = state.locationsGeojson.features.filter(f => {
     const p = f.properties;
-    return p.region === state.selectedRegion && selected.includes(p.brand);
+    if (p.region !== state.selectedRegion) return false;
+    if (!selected.includes(p.brand)) return false;
+    if (cityFilter && (p.city || "").trim() !== cityFilter) return false;
+    return true;
   });
 
   state.locationsLayer = L.geoJSON({ type: "FeatureCollection", features: feats }, {
@@ -261,8 +551,9 @@ function rebuildLocationsLayer() {
   }).addTo(state.map);
 }
 
-// ── Refresh all data ──
+// ── Refresh ──
 function refreshAll() {
+  if (state.country !== "england") return;
   refreshKPIs();
   buildHexLayer();
   rebuildLocationsLayer();
@@ -325,7 +616,6 @@ function refreshRegionPanel() {
   document.getElementById("regionTopBrand").textContent = topBrand || "—";
   document.getElementById("regionTopBrandHint").textContent = total ? `${fmtPct(topVal / total)} share` : "Top Brand";
 
-  // Brand table with color dots
   const rows = selected.map(b => ({ brand: b, count: counts[b] || 0 })).sort((a, b) => b.count - a.count);
   document.getElementById("regionBrandTable").innerHTML = `
     <tr><th>Brand</th><th class="num">Count</th><th class="num">Share</th></tr>
@@ -339,16 +629,27 @@ function refreshRegionPanel() {
     }).join("")}
   `;
 
-  // Cities
+  // Top cities - clickable
   const feats = state.locationsGeojson.features.filter(f => f.properties.region === region && selected.includes(f.properties.brand));
   const cityCounts = {};
   feats.forEach(f => { const c = (f.properties.city || "Unknown").trim(); cityCounts[c] = (cityCounts[c] || 0) + 1; });
-  const topCities = Object.entries(cityCounts).map(([city, count]) => ({ city, count })).sort((a, b) => b.count - a.count).slice(0, 8);
+  const topCities = Object.entries(cityCounts).map(([city, count]) => ({ city, count })).sort((a, b) => b.count - a.count).slice(0, 10);
 
   document.getElementById("regionCityTable").innerHTML = `
     <tr><th>City</th><th class="num">Locations</th></tr>
-    ${topCities.map(r => `<tr><td>${r.city}</td><td class="num">${fmtInt(r.count)}</td></tr>`).join("")}
+    ${topCities.map(r => `<tr><td><span class="city-link" data-city="${r.city}">${r.city}</span></td><td class="num">${fmtInt(r.count)}</td></tr>`).join("")}
   `;
+
+  // Wire city clicks
+  document.querySelectorAll(".city-link").forEach(el => {
+    el.onclick = () => {
+      const cityName = el.dataset.city;
+      state.selectedCity = cityName;
+      document.getElementById("citySelect").value = cityName;
+      flyToCity(cityName, state.selectedRegion);
+      rebuildLocationsLayer();
+    };
+  });
 }
 
 function refreshCompareTab() {
@@ -379,11 +680,7 @@ function refreshExportInfo() {
   const selected = selectedArr();
   document.getElementById("exportBrandsInfo").textContent = selected.length === state.metrics.brands.length ? "All brands" : selected.join(", ");
   document.getElementById("exportRegionInfo").textContent = state.selectedRegion ? state.selectedRegion.replace(" (England)", "") : "All England";
-
-  const feats = state.locationsGeojson.features.filter(f => {
-    const p = f.properties;
-    return selected.includes(p.brand) && (!state.selectedRegion || p.region === state.selectedRegion);
-  });
+  const feats = state.locationsGeojson.features.filter(f => selected.includes(f.properties.brand) && (!state.selectedRegion || f.properties.region === state.selectedRegion));
   document.getElementById("exportCountInfo").textContent = fmtInt(feats.length);
 }
 
@@ -394,28 +691,23 @@ function exportFiltered(type) {
     const p = f.properties;
     return selected.includes(p.brand) && (!state.selectedRegion || p.region === state.selectedRegion);
   });
-
   if (type === "geojson") {
-    const blob = new Blob([JSON.stringify({ type: "FeatureCollection", features: feats }, null, 2)], { type: "application/geo+json" });
-    downloadBlob(blob, `explorer_${state.selectedRegion || "england"}.geojson`);
-    return;
+    downloadBlob(new Blob([JSON.stringify({ type: "FeatureCollection", features: feats }, null, 2)], { type: "application/geo+json" }), `explorer_${state.selectedRegion || "england"}.geojson`);
+  } else {
+    const header = ["brand", "id", "name", "city", "postcode", "region", "lon", "lat"];
+    const lines = [header.join(",")];
+    feats.forEach(f => {
+      const p = f.properties;
+      const [lon, lat] = f.geometry.coordinates;
+      lines.push([p.brand, p.id, p.name, p.city, p.postcode, p.region, lon, lat].map(v => `"${String(v ?? "").replaceAll('"', '""')}"`).join(","));
+    });
+    downloadBlob(new Blob([lines.join("\n")], { type: "text/csv" }), `explorer_${state.selectedRegion || "england"}.csv`);
   }
-
-  const header = ["brand", "id", "name", "city", "postcode", "region", "lon", "lat"];
-  const lines = [header.join(",")];
-  feats.forEach(f => {
-    const p = f.properties;
-    const [lon, lat] = f.geometry.coordinates;
-    lines.push([p.brand, p.id, p.name, p.city, p.postcode, p.region, lon, lat]
-      .map(v => `"${String(v ?? "").replaceAll('"', '""')}"`).join(","));
-  });
-  downloadBlob(new Blob([lines.join("\n")], { type: "text/csv" }), `explorer_${state.selectedRegion || "england"}.csv`);
 }
 
 function downloadBlob(blob, filename) {
   const url = URL.createObjectURL(blob);
-  const a = document.createElement("a");
-  a.href = url; a.download = filename;
+  const a = document.createElement("a"); a.href = url; a.download = filename;
   document.body.appendChild(a); a.click(); a.remove();
   URL.revokeObjectURL(url);
 }
@@ -424,6 +716,36 @@ function downloadBlob(blob, filename) {
 function wireUI() {
   document.querySelectorAll(".sidebar-btn[data-tab]").forEach(b => b.addEventListener("click", () => setTab(b.dataset.tab)));
   document.querySelectorAll(".rp-tab").forEach(b => b.addEventListener("click", () => setTab(b.dataset.tab)));
+
+  // Country
+  document.getElementById("countrySelect").addEventListener("change", e => setCountry(e.target.value));
+
+  // Region
+  document.getElementById("regionSelect").addEventListener("change", e => {
+    state.selectedRegion = e.target.value || null;
+    state.selectedCity = null;
+    buildCitySelect(state.selectedRegion);
+    flyToRegion(state.selectedRegion);
+    refreshAll();
+  });
+
+  // City
+  document.getElementById("citySelect").addEventListener("change", e => {
+    state.selectedCity = e.target.value || null;
+    if (state.selectedCity) flyToCity(state.selectedCity, state.selectedRegion);
+    else if (state.selectedRegion) flyToRegion(state.selectedRegion);
+    rebuildLocationsLayer();
+  });
+
+  // Clear region
+  document.getElementById("clearRegion").onclick = () => {
+    state.selectedRegion = null;
+    state.selectedCity = null;
+    document.getElementById("regionSelect").value = "";
+    document.getElementById("citySelectorWrap").style.display = "none";
+    flyToRegion(null);
+    refreshAll();
+  };
 
   // Metric toggles
   document.querySelectorAll(".metric-toggle").forEach(btn => {
@@ -435,18 +757,31 @@ function wireUI() {
     });
   });
 
-  // Region select
-  document.getElementById("regionSelect").addEventListener("change", e => {
-    state.selectedRegion = e.target.value || null;
-    refreshAll();
+  // Heatmap toggle
+  document.getElementById("heatmapToggle").addEventListener("change", e => {
+    state.heatmapMode = e.target.checked;
+    document.getElementById("heatmapSettings").classList.toggle("hidden", !state.heatmapMode);
+    buildHexLayer();
   });
 
-  // Clear region
-  document.getElementById("clearRegion").onclick = () => {
-    state.selectedRegion = null;
-    document.getElementById("regionSelect").value = "";
-    refreshAll();
-  };
+  // Primary brand
+  document.getElementById("primaryBrandSelect").addEventListener("change", e => {
+    state.primaryBrand = e.target.value;
+    buildHexLayer();
+  });
+
+  // Compare mode
+  document.getElementById("compareModeSelect").addEventListener("change", e => {
+    state.compareMode = e.target.value;
+    document.getElementById("secondaryBrandRow").classList.toggle("hidden", e.target.value !== "pick");
+    buildHexLayer();
+  });
+
+  // Secondary brand
+  document.getElementById("secondaryBrandSelect").addEventListener("change", e => {
+    state.secondaryBrand = e.target.value;
+    buildHexLayer();
+  });
 
   // Brand quick-select
   document.getElementById("selectAllBrands").onclick = () => setAllBrands(state.metrics.brands);
@@ -468,6 +803,7 @@ async function main() {
 
     buildBrandList();
     buildRegionSelect();
+    buildBrandSelects();
     wireUI();
     initMap();
     refreshAll();
