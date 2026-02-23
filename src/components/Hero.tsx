@@ -18,7 +18,7 @@ const Hero = () => (
           Country Explorer for Restaurant Chains
         </div>
         <h1 className="text-4xl md:text-6xl font-bold text-foreground leading-tight tracking-tight mb-6">
-          Map your restaurant competitors{" "}
+          Map your competitors{" "}
           <span className="text-gradient">in minutes</span>
         </h1>
         <p className="text-lg md:text-xl text-muted-foreground leading-relaxed max-w-2xl mx-auto mb-8">
