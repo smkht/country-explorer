@@ -1029,7 +1029,7 @@ function refreshRegionPanel() {
   const topCities = Object.entries(cityCounts).map(([city, count]) => ({ city, count })).sort((a, b) => b.count - a.count).slice(0, 10);
 
   const cityNullCount = Object.values(state.cityNullStores || {}).reduce((s, r) => s + r._total, 0);
-  const cityNotice = cityNullCount > 0 ? `<tr><td colspan="2" style="padding:6px 8px;font-size:10px;color:var(--muted);background:var(--panel2);border-radius:6px;border:1px solid var(--border);line-height:1.4">📐 <strong>Data quality:</strong> ${cityNullCount} stores have coordinates but no city name — included in map density but excluded from city-level analysis.</td></tr>` : '';
+  const cityNotice = cityNullCount > 0 ? `<tr><td colspan="2" style="padding:6px 8px;font-size:10px;color:var(--muted);background:var(--panel2);border-radius:6px;border:1px solid var(--border);line-height:1.4">📐 <strong>Data quality:</strong> ${cityNullCount} stores have coordinates but no city name — included in map density but excluded from city-level analysis.</td></tr>` : `<tr><td colspan="2" style="padding:6px 8px;font-size:10px;color:var(--muted);background:var(--panel2);border-radius:6px;border:1px solid var(--border);line-height:1.4">✅ <strong>Data quality:</strong> All stores have city names assigned.</td></tr>`;
   document.getElementById("regionCityTable").innerHTML = `
     ${cityNotice}
     <tr><th>City</th><th class="num">Locations</th></tr>
@@ -1192,7 +1192,7 @@ function refreshCompareTab() {
       return `<tr><td><strong>${city}</strong></td>${cells.join("")}<td class="num" style="font-weight:700">${data.total}</td></tr>`;
     });
     const cityNullCount2 = Object.values(state.cityNullStores || {}).reduce((s, r) => s + r._total, 0);
-    const cityNotice2 = cityNullCount2 > 0 ? `<div style="font-size:10px;color:var(--muted);padding:4px 8px;background:var(--panel2);border-radius:6px;border:1px solid var(--border);margin-bottom:8px;line-height:1.4">📐 <strong>Data quality:</strong> ${cityNullCount2} stores have coordinates but no city name — included in map density but excluded from city-level analysis.</div>` : '';
+    const cityNotice2 = cityNullCount2 > 0 ? `<div style="font-size:10px;color:var(--muted);padding:4px 8px;background:var(--panel2);border-radius:6px;border:1px solid var(--border);margin-bottom:8px;line-height:1.4">📐 <strong>Data quality:</strong> ${cityNullCount2} stores have coordinates but no city name — included in map density but excluded from city-level analysis.</div>` : `<div style="font-size:10px;color:var(--muted);padding:4px 8px;background:var(--panel2);border-radius:6px;border:1px solid var(--border);margin-bottom:8px;line-height:1.4">✅ <strong>Data quality:</strong> All stores have city names assigned.</div>`;
     document.getElementById("compareMatrix").innerHTML = `
       ${cityNotice2}
       <table>
@@ -1592,7 +1592,10 @@ function refreshGuesstimate() {
   const dataQualityNote = (d.unlocatedTotal > 0 || d.cityNullTotal > 0) ? `
     <div style="font-size:10px;color:var(--muted);padding:4px 8px;background:var(--panel2);border-radius:6px;border:1px solid var(--border);margin-bottom:8px;line-height:1.4">
       📐 <strong>Data quality:</strong> ${d.unlocatedTotal > 0 ? `${d.unlocatedTotal} stores in metrics without exact coordinates — weighted proportionally by population into regional estimates.` : ''} ${d.cityNullTotal > 0 ? `${d.cityNullTotal} stores have coordinates but no city name — included in map density but excluded from city-level analysis.` : ''}
-    </div>` : '';
+    </div>` : `
+    <div style="font-size:10px;color:var(--muted);padding:4px 8px;background:var(--panel2);border-radius:6px;border:1px solid var(--border);margin-bottom:8px;line-height:1.4">
+      ✅ <strong>Data quality:</strong> All stores have city names and coordinates assigned.
+    </div>`;
 
   if (isEntrant) {
     const e = d.entrantData;
@@ -1890,6 +1893,19 @@ async function main() {
     state.metrics = await loadJSON("metrics_england.json");
     state.regionsGeojson = await loadJSON("england_regions_simplified.geojson");
     state.locationsGeojson = await loadJSON("england_locations_min.geojson");
+
+    // Normalize city names to title case (e.g. "LONDON" → "London", "st. albans" → "St. Albans")
+    state.locationsGeojson.features.forEach(f => {
+      const city = (f.properties.city || "").trim();
+      if (city) {
+        f.properties.city = city.replace(/\b\w/g, c => c.toUpperCase()).replace(/\b\w+/g, (w, i) => {
+          // Keep short prepositions/articles lowercase unless first word
+          const lower = ['of', 'the', 'and', 'in', 'on', 'at', 'upon', 'le', 'la', 'de'];
+          if (i > 0 && lower.includes(w.toLowerCase())) return w.toLowerCase();
+          return w.charAt(0).toUpperCase() + w.slice(1).toLowerCase();
+        });
+      }
+    });
 
     buildSpatialIndex();
     computeUnlocatedStores();
