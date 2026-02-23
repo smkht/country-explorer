@@ -96,39 +96,7 @@ const StatsSection = () => (
         ))}
       </div>
 
-      {/* Countries & Brands grid */}
-      <div className="max-w-4xl mx-auto mb-10">
-        {/* Brands tracked */}
-        <motion.div
-          initial={{ opacity: 0, y: 20 }}
-          whileInView={{ opacity: 1, y: 0 }}
-          viewport={{ once: true }}
-          transition={{ duration: 0.6, delay: 0.1 }}
-          className="bg-card rounded-2xl border border-border overflow-hidden"
-        >
-          <div className="px-6 py-4 border-b border-border">
-            <h3 className="font-semibold text-foreground">England — Restaurant Chains Tracked</h3>
-          </div>
-          <table className="w-full">
-            <thead>
-              <tr className="border-b border-border text-sm text-muted-foreground">
-                <th className="px-6 py-3 text-left font-medium">Chain</th>
-                <th className="px-6 py-3 text-right font-medium">Locations</th>
-                <th className="px-6 py-3 text-right font-medium">Share</th>
-              </tr>
-            </thead>
-            <tbody>
-              {brands.map((b, i) => (
-                <tr key={i} className="border-b border-border last:border-0 hover:bg-muted/50 transition-colors">
-                  <td className="px-6 py-3 text-foreground font-medium">{b.name}</td>
-                  <td className="px-6 py-3 text-right text-foreground tabular-nums">{b.locations}</td>
-                  <td className="px-6 py-3 text-right text-muted-foreground tabular-nums">{b.share}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </motion.div>
-      </div>
+
 
       {/* London deep-dive */}
       <motion.div
