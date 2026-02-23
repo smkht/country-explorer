@@ -169,14 +169,14 @@ async function loadJSON(path) {
 
 // ── Hex colors ──
 function hexFillDensity(count, max) {
-  if (!max || count === 0) return "hsla(230,80%,95%,0.15)";
+  if (!max || count === 0) return "hsla(230,20%,92%,0.12)";
   const t = Math.min(1, count / max);
   const l = 90 - 50 * t;
   const a = 0.3 + 0.55 * t;
   return `hsla(230,85%,${l}%,${a})`;
 }
 function hexStrokeDensity(count, max) {
-  if (!max || count === 0) return "rgba(59,91,254,0.06)";
+  if (!max || count === 0) return "rgba(59,91,254,0.15)";
   const t = Math.min(1, count / max);
   return `rgba(59,91,254,${0.08 + 0.35 * t})`;
 }
@@ -221,7 +221,7 @@ function setCountry(country) {
   document.getElementById("regionSelect").disabled = !isEngland;
   document.getElementById("mapLegend").classList.toggle("hidden", !isEngland);
 
-  ["kpiSection", "brandsSection", "metricSection", "regionDetailSection", "heatmapSection", "guesstimateSection"]
+  ["kpiSection", "brandsSection", "metricSection", "regionDetailSection", "heatmapSection", "guesstimateSection", "deepreviewContent"]
     .forEach(id => {
       const el = document.getElementById(id);
       if (!el) return;
@@ -249,9 +249,10 @@ function setTab(tab) {
   document.querySelectorAll(".sidebar-btn[data-tab]").forEach(b => b.classList.toggle("active", b.dataset.tab === tab));
   document.querySelectorAll(".rp-tab").forEach(b => b.classList.toggle("active", b.dataset.tab === tab));
   document.getElementById("overviewContent").classList.toggle("hidden", tab !== "overview");
+  document.getElementById("deepreviewContent").classList.toggle("hidden", tab !== "deepreview");
   document.getElementById("compareContent").classList.toggle("hidden", tab !== "compare");
   document.getElementById("exportContent").classList.toggle("hidden", tab !== "export");
-  if (tab === "overview" && state.map) setTimeout(() => state.map.invalidateSize(), 100);
+  if ((tab === "overview" || tab === "deepreview") && state.map) setTimeout(() => state.map.invalidateSize(), 100);
 }
 
 // ── Build brand list ──
@@ -462,7 +463,7 @@ function buildHexLayer() {
 
   // Use spatial index for fast point retrieval
   const locations = getPointsInBounds(bounds, brandFilter, regionFilter);
-  if (locations.length === 0) return;
+  // Don't return early — we want to show empty hex outlines too
 
   const hexGrid = turf.hexGrid(bbox, cellSize, { units: 'kilometers' });
   const points = turf.featureCollection(locations.map(f => turf.point(f.geometry.coordinates, f.properties)));
@@ -513,9 +514,10 @@ function buildHexLayer() {
       if (hex.properties.count > maxCount) maxCount = hex.properties.count;
     });
 
-    const nonEmpty = hexGrid.features.filter(h => h.properties.count > 0);
+    // Show ALL hexagons — empty ones get subtle outlines
+    const allHexes = hexGrid.features;
 
-    state.hexLayer = L.geoJSON({ type: "FeatureCollection", features: nonEmpty }, {
+    state.hexLayer = L.geoJSON({ type: "FeatureCollection", features: allHexes }, {
       style: f => ({
         fillColor: hexFillDensity(f.properties.count, maxCount),
         fillOpacity: 1,
