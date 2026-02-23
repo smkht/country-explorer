@@ -766,56 +766,108 @@ function refreshExportInfo() {
 }
 
 // ════════════════════════════════════════════
-// ── GUESSTIMATE ENGINE (fake market insights)
+// ── GUESSTIMATE ENGINE (data-driven insights)
 // ════════════════════════════════════════════
 
 function generateGuesstimateData() {
+  const primary = state.primaryBrand;
+  const isHeatmap = state.heatmapMode && primary;
   const selected = selectedArr();
   const region = state.selectedRegion;
   const regionLabel = region ? region.replace(" (England)", "") : "England";
+  const regions = state.metrics.regions;
+  const brandCounts = state.metrics.region_brand_counts;
+  const areas = state.metrics.region_area_km2;
+  const allBrands = state.metrics.brands;
 
-  // Seed from selected brands + region for consistent-ish results
-  const seed = (selected.join("") + (region || "all")).split("").reduce((a, c) => a + c.charCodeAt(0), 0);
-  const rng = (min, max) => {
-    const x = Math.sin(seed * 9301 + min * 49297 + max * 233) * 10000;
-    return Math.floor((x - Math.floor(x)) * (max - min + 1)) + min;
-  };
+  // Determine which brand we're analysing and who are competitors
+  const focusBrand = isHeatmap ? primary : (selected.length === 1 ? selected[0] : null);
+  const competitors = focusBrand
+    ? allBrands.filter(b => b !== focusBrand && (isHeatmap || selected.includes(b)))
+    : [];
 
-  // Market saturation
-  const totalLocs = selected.reduce((sum, b) => sum + (state.metrics.brand_totals[b] || 0), 0);
-  const saturation = Math.min(95, Math.max(15, rng(25, 85)));
-  const marketSize = rng(800, 3200);
-  const revenuePerLoc = rng(450, 1200);
+  // ── Per-region real numbers ──
+  const regionData = regions.map(r => {
+    const counts = brandCounts[r] || {};
+    const area = areas[r] || 1;
+    const focusCount = focusBrand ? (counts[focusBrand] || 0) : 0;
+    const compCount = competitors.reduce((s, b) => s + (counts[b] || 0), 0);
+    const totalSelected = selected.reduce((s, b) => s + (counts[b] || 0), 0);
+    const allCount = allBrands.reduce((s, b) => s + (counts[b] || 0), 0);
+    const density = totalSelected / (area / 1000);
+    const focusShare = allCount > 0 ? focusCount / allCount : 0;
+    const compShare = allCount > 0 ? compCount / allCount : 0;
+    return { region: r, label: r.replace(" (England)", ""), area, focusCount, compCount, totalSelected, allCount, density, focusShare, compShare };
+  });
 
-  // Regional insights
-  const regionInsights = state.metrics.regions.map(r => {
-    const rCounts = state.metrics.region_brand_counts[r] || {};
-    let total = 0;
-    selected.forEach(b => total += (rCounts[b] || 0));
-    const pop = rng(800000, 9000000);
-    const opportunity = Math.max(0, 100 - Math.floor((total / (pop / 100000)) * 30));
-    return { region: r.replace(" (England)", ""), locations: total, population: pop, opportunity };
+  // ── Market saturation (based on density vs London benchmark) ──
+  const londonDensity = regionData.find(r => r.region === "London")?.density || 1;
+  const avgDensity = regionData.reduce((s, r) => s + r.density, 0) / regionData.length;
+  const saturation = Math.min(99, Math.round((avgDensity / londonDensity) * 100));
+
+  // ── Focus brand totals ──
+  const focusTotal = focusBrand ? (state.metrics.brand_totals[focusBrand] || 0) : 0;
+  const totalAll = allBrands.reduce((s, b) => s + (state.metrics.brand_totals[b] || 0), 0);
+  const nationalShare = totalAll > 0 ? focusTotal / totalAll : 0;
+
+  // ── Regional opportunity: regions where focus brand is underrepresented vs market avg ──
+  const avgShare = focusBrand ? focusTotal / totalAll : 0;
+  const regionInsights = regionData.map(r => {
+    // Opportunity = how much room to grow. High when focus brand share is below its national avg
+    const gapVsAvg = avgShare > 0 ? Math.max(0, 1 - (r.focusShare / avgShare)) : 0;
+    // Also factor in overall density — low density = more room
+    const densityFactor = Math.max(0, 1 - (r.density / londonDensity));
+    const opportunity = Math.round(Math.min(100, (gapVsAvg * 60 + densityFactor * 40)));
+    const advice = r.focusShare < avgShare * 0.7
+      ? `Under-penetrated: ${focusBrand || 'You'} hold${fmtPct(r.focusShare)} vs ${fmtPct(avgShare)} national avg`
+      : r.focusShare > avgShare * 1.3
+        ? `Strong position: ${fmtPct(r.focusShare)} share, defend & optimise`
+        : `Balanced: close to national average share`;
+    return { ...r, opportunity, advice };
   }).sort((a, b) => b.opportunity - a.opportunity);
 
-  // Whitespace cities (fake data for areas with low coverage)
-  const whitespace = [
-    { city: "Swindon", score: rng(70, 95), reason: "Low competitor density, growing population" },
-    { city: "Milton Keynes", score: rng(65, 90), reason: "High commuter traffic, underserved" },
-    { city: "Exeter", score: rng(60, 88), reason: "University town, limited fast-food options" },
-    { city: "Lincoln", score: rng(55, 85), reason: "Growing catchment, minimal brand presence" },
-    { city: "York", score: rng(50, 82), reason: "Tourist hotspot, seasonal demand peak" }
-  ].sort((a, b) => b.score - a.score);
+  // ── Whitespace: cities where focus brand has fewest locations vs competitors ──
+  const cityData = {};
+  state.locationsGeojson.features.forEach(f => {
+    const p = f.properties;
+    const city = (p.city || "").trim();
+    if (!city || city === "Unknown") return;
+    if (region && p.region !== region) return;
+    if (!cityData[city]) cityData[city] = { total: 0, focus: 0, comp: 0, brands: {} };
+    cityData[city].total++;
+    if (p.brand === focusBrand) cityData[city].focus++;
+    if (competitors.includes(p.brand)) cityData[city].comp++;
+    cityData[city].brands[p.brand] = (cityData[city].brands[p.brand] || 0) + 1;
+  });
 
-  // Growth projections
-  const growth = {
-    current: totalLocs,
-    y1: Math.floor(totalLocs * (1 + rng(3, 12) / 100)),
-    y2: Math.floor(totalLocs * (1 + rng(8, 22) / 100)),
-    y3: Math.floor(totalLocs * (1 + rng(15, 35) / 100)),
-    cagr: (rng(3, 12)).toFixed(1)
+  const whitespace = Object.entries(cityData)
+    .filter(([, d]) => d.total >= 5) // Only cities with meaningful presence
+    .map(([city, d]) => {
+      // Score: high when competitors are there but focus brand is missing/weak
+      const compPresent = d.comp;
+      const focusPresent = d.focus;
+      const ratio = d.total > 0 ? focusPresent / d.total : 0;
+      const score = Math.round(Math.min(99, Math.max(5, (1 - ratio) * 70 + (compPresent > focusPresent * 2 ? 25 : 10))));
+      const topComp = Object.entries(d.brands)
+        .filter(([b]) => b !== focusBrand)
+        .sort((a, b) => b[1] - a[1])[0];
+      const reason = focusPresent === 0
+        ? `No ${focusBrand || 'your'} stores — ${topComp ? topComp[0] + ' has ' + topComp[1] : 'competitors active'}`
+        : `Only ${focusPresent} store${focusPresent > 1 ? 's' : ''} vs ${compPresent} competitors — ${topComp ? topComp[0] + ' leads with ' + topComp[1] : 'gap exists'}`;
+      return { city, score, reason, focus: focusPresent, comp: compPresent, total: d.total };
+    })
+    .sort((a, b) => b.score - a.score)
+    .slice(0, 8);
+
+  // ── Heatmap-aware competitive summary ──
+  const strongRegions = regionInsights.filter(r => r.focusShare >= avgShare).sort((a, b) => b.focusShare - a.focusShare);
+  const weakRegions = regionInsights.filter(r => r.focusShare < avgShare).sort((a, b) => a.focusShare - b.focusShare);
+
+  return {
+    focusBrand, saturation, nationalShare, focusTotal, totalAll,
+    regionInsights, whitespace, strongRegions, weakRegions, regionLabel,
+    isHeatmap, competitors
   };
-
-  return { saturation, marketSize, revenuePerLoc, regionInsights, whitespace, growth, regionLabel, totalLocs };
 }
 
 function refreshGuesstimate() {
@@ -824,50 +876,81 @@ function refreshGuesstimate() {
   panel.classList.remove("hidden");
 
   const d = generateGuesstimateData();
+  const brandLabel = d.focusBrand || "Selected Brands";
+  const hasHeatmap = d.isHeatmap && d.focusBrand;
 
   panel.innerHTML = `
-    <div class="guesstimate-badge">⚡ Guesstimate · Simulated Data</div>
+    <div class="guesstimate-badge">⚡ Guesstimate · Based on Real Store Data${hasHeatmap ? ' + Heatmap' : ''}</div>
 
+    ${d.focusBrand ? `
     <div class="rp-kpi-grid" style="margin-bottom:12px">
+      <div class="rp-kpi-card"><div class="rp-kpi-value">${fmtInt(d.focusTotal)}</div><div class="rp-kpi-label">${brandLabel} Stores</div></div>
+      <div class="rp-kpi-card"><div class="rp-kpi-value">${fmtPct(d.nationalShare)}</div><div class="rp-kpi-label">National Share</div></div>
       <div class="rp-kpi-card"><div class="rp-kpi-value">${d.saturation}%</div><div class="rp-kpi-label">Market Saturation</div></div>
-      <div class="rp-kpi-card"><div class="rp-kpi-value">£${fmtInt(d.marketSize)}M</div><div class="rp-kpi-label">Est. Market Size</div></div>
-      <div class="rp-kpi-card"><div class="rp-kpi-value">£${fmtInt(d.revenuePerLoc)}K</div><div class="rp-kpi-label">Rev / Location</div></div>
-      <div class="rp-kpi-card"><div class="rp-kpi-value">${d.growth.cagr}%</div><div class="rp-kpi-label">Est. CAGR</div></div>
+      <div class="rp-kpi-card"><div class="rp-kpi-value">${fmtInt(d.totalAll)}</div><div class="rp-kpi-label">Total Market</div></div>
     </div>
+    ` : `
+    <div class="guesstimate-tip">💡 Turn on <strong>Heatmap Mode</strong> and pick a primary brand for competitor-specific insights</div>
+    `}
 
+    ${hasHeatmap ? `
     <div class="rp-table-section">
-      <div class="rp-table-title">📈 Growth Projections</div>
+      <div class="rp-table-title">💪 Strongest Regions for ${brandLabel}</div>
       <table class="table">
-        <tr><th>Year</th><th class="num">Locations</th><th class="num">Change</th></tr>
-        <tr><td>Current</td><td class="num">${fmtInt(d.growth.current)}</td><td class="num">—</td></tr>
-        <tr><td>Year 1</td><td class="num">${fmtInt(d.growth.y1)}</td><td class="num" style="color:#43A047">+${fmtInt(d.growth.y1 - d.growth.current)}</td></tr>
-        <tr><td>Year 2</td><td class="num">${fmtInt(d.growth.y2)}</td><td class="num" style="color:#43A047">+${fmtInt(d.growth.y2 - d.growth.current)}</td></tr>
-        <tr><td>Year 3</td><td class="num">${fmtInt(d.growth.y3)}</td><td class="num" style="color:#43A047">+${fmtInt(d.growth.y3 - d.growth.current)}</td></tr>
-      </table>
-    </div>
-
-    <div class="rp-table-section">
-      <div class="rp-table-title">🎯 Whitespace Opportunities</div>
-      <table class="table">
-        <tr><th>City</th><th class="num">Score</th><th>Reason</th></tr>
-        ${d.whitespace.map(w => `<tr>
-          <td><strong>${w.city}</strong></td>
-          <td class="num"><span class="opp-score ${w.score >= 80 ? 'high' : w.score >= 60 ? 'med' : 'low'}">${w.score}</span></td>
-          <td style="font-size:11px;color:var(--muted)">${w.reason}</td>
+        <tr><th>Region</th><th class="num">${brandLabel}</th><th class="num">Competitors</th><th class="num">Share</th></tr>
+        ${d.strongRegions.slice(0, 4).map(r => `<tr>
+          <td>${r.label}</td>
+          <td class="num" style="color:#43A047;font-weight:700">${fmtInt(r.focusCount)}</td>
+          <td class="num">${fmtInt(r.compCount)}</td>
+          <td class="num"><strong>${fmtPct(r.focusShare)}</strong></td>
         </tr>`).join("")}
       </table>
     </div>
 
     <div class="rp-table-section">
+      <div class="rp-table-title">⚠️ Weakest Regions — Growth Targets</div>
+      <table class="table">
+        <tr><th>Region</th><th class="num">${brandLabel}</th><th class="num">Gap vs Avg</th><th>Advice</th></tr>
+        ${d.weakRegions.slice(0, 4).map(r => {
+          const gap = d.nationalShare > 0 ? Math.round((1 - r.focusShare / d.nationalShare) * 100) : 0;
+          return `<tr>
+            <td>${r.label}</td>
+            <td class="num" style="color:#E53935;font-weight:700">${fmtInt(r.focusCount)}</td>
+            <td class="num"><span class="opp-score low">-${gap}%</span></td>
+            <td style="font-size:10px;color:var(--muted)">${r.advice}</td>
+          </tr>`;
+        }).join("")}
+      </table>
+    </div>
+    ` : ''}
+
+    <div class="rp-table-section">
+      <div class="rp-table-title">🎯 Whitespace — Where to Expand${d.focusBrand ? ` ${brandLabel}` : ''}</div>
+      ${d.whitespace.length > 0 ? `
+      <table class="table">
+        <tr><th>City</th><th class="num">You</th><th class="num">Comp.</th><th class="num">Score</th><th>Why</th></tr>
+        ${d.whitespace.map(w => `<tr>
+          <td><strong>${w.city}</strong></td>
+          <td class="num">${w.focus}</td>
+          <td class="num">${w.comp}</td>
+          <td class="num"><span class="opp-score ${w.score >= 75 ? 'high' : w.score >= 50 ? 'med' : 'low'}">${w.score}</span></td>
+          <td style="font-size:10px;color:var(--muted)">${w.reason}</td>
+        </tr>`).join("")}
+      </table>
+      ` : `<div class="rp-empty">Select a region or enable heatmap for whitespace analysis</div>`}
+    </div>
+
+    <div class="rp-table-section">
       <div class="rp-table-title">🗺️ Regional Opportunity Index</div>
       <table class="table">
-        <tr><th>Region</th><th class="num">Locs</th><th class="num">Opportunity</th></tr>
-        ${d.regionInsights.slice(0, 5).map(r => `<tr>
-          <td>${r.region}</td>
-          <td class="num">${fmtInt(r.locations)}</td>
+        <tr><th>Region</th><th class="num">Stores</th><th class="num">Density</th><th class="num">Opportunity</th></tr>
+        ${d.regionInsights.map(r => `<tr>
+          <td>${r.label}</td>
+          <td class="num">${fmtInt(r.totalSelected)}</td>
+          <td class="num">${r.density.toFixed(1)}</td>
           <td class="num">
             <div class="opp-bar-wrap">
-              <div class="opp-bar" style="width:${r.opportunity}%;background:${r.opportunity > 70 ? '#43A047' : r.opportunity > 40 ? '#FF9800' : '#E53935'}"></div>
+              <div class="opp-bar" style="width:${r.opportunity}%;background:${r.opportunity > 65 ? '#43A047' : r.opportunity > 35 ? '#FF9800' : '#E53935'}"></div>
               <span>${r.opportunity}%</span>
             </div>
           </td>
