@@ -1,0 +1,137 @@
+{
+  "snapshot_date": "2025-12-30",
+  "brands": [
+    "Domino's",
+    "KFC",
+    "McDonald's",
+    "Nando's",
+    "Papa Johns",
+    "Subway"
+  ],
+  "regions": [
+    "East (England)",
+    "East Midlands (England)",
+    "London",
+    "North East (England)",
+    "North West (England)",
+    "South East (England)",
+    "South West (England)",
+    "West Midlands (England)",
+    "Yorkshire and The Humber"
+  ],
+  "region_area_km2": {
+    "North East (England)": 8598.471593756834,
+    "North West (England)": 14165.756899420327,
+    "Yorkshire and The Humber": 15408.428894406905,
+    "East Midlands (England)": 15642.159527002605,
+    "West Midlands (England)": 13003.992522867838,
+    "East (England)": 19130.46892653966,
+    "London": 1573.3141093547467,
+    "South East (England)": 19087.57435218757,
+    "South West (England)": 23850.596923454472
+  },
+  "brand_totals": {
+    "Domino's": 1093,
+    "KFC": 857,
+    "McDonald's": 1275,
+    "Nando's": 423,
+    "Papa Johns": 372,
+    "Subway": 1698
+  },
+  "region_totals": {
+    "East (England)": 660,
+    "East Midlands (England)": 504,
+    "London": 914,
+    "North East (England)": 260,
+    "North West (England)": 818,
+    "South East (England)": 939,
+    "South West (England)": 507,
+    "West Midlands (England)": 632,
+    "Yorkshire and The Humber": 484
+  },
+  "region_brand_counts": {
+    "East (England)": {
+      "Domino's": 138,
+      "KFC": 88,
+      "McDonald's": 150,
+      "Nando's": 42,
+      "Papa Johns": 52,
+      "Subway": 190
+    },
+    "East Midlands (England)": {
+      "Domino's": 102,
+      "KFC": 64,
+      "McDonald's": 123,
+      "Nando's": 22,
+      "Papa Johns": 39,
+      "Subway": 154
+    },
+    "London": {
+      "Domino's": 151,
+      "KFC": 161,
+      "McDonald's": 192,
+      "Nando's": 127,
+      "Papa Johns": 67,
+      "Subway": 216
+    },
+    "North East (England)": {
+      "Domino's": 45,
+      "KFC": 36,
+      "McDonald's": 63,
+      "Nando's": 17,
+      "Papa Johns": 7,
+      "Subway": 92
+    },
+    "North West (England)": {
+      "Domino's": 135,
+      "KFC": 121,
+      "McDonald's": 192,
+      "Nando's": 51,
+      "Papa Johns": 26,
+      "Subway": 293
+    },
+    "South East (England)": {
+      "Domino's": 217,
+      "KFC": 142,
+      "McDonald's": 197,
+      "Nando's": 70,
+      "Papa Johns": 77,
+      "Subway": 236
+    },
+    "South West (England)": {
+      "Domino's": 112,
+      "KFC": 75,
+      "McDonald's": 106,
+      "Nando's": 27,
+      "Papa Johns": 39,
+      "Subway": 148
+    },
+    "West Midlands (England)": {
+      "Domino's": 107,
+      "KFC": 93,
+      "McDonald's": 137,
+      "Nando's": 36,
+      "Papa Johns": 46,
+      "Subway": 213
+    },
+    "Yorkshire and The Humber": {
+      "Domino's": 86,
+      "KFC": 77,
+      "McDonald's": 115,
+      "Nando's": 31,
+      "Papa Johns": 19,
+      "Subway": 156
+    }
+  },
+  "region_density_per_1000km2": {
+    "East (England)": 34.4999384246344,
+    "East Midlands (England)": 32.22061500715163,
+    "London": 580.939301672476,
+    "North East (England)": 30.23793207490276,
+    "North West (England)": 57.74488478151656,
+    "South East (England)": 49.19430738942395,
+    "South West (England)": 21.257329601735066,
+    "West Midlands (England)": 48.600458581363576,
+    "Yorkshire and The Humber": 31.411379013189777
+  }
+}

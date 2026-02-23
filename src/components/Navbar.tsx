@@ -16,10 +16,10 @@ const Navbar = () => (
         <a href="#data" className="hover:text-foreground transition-colors">Data</a>
       </div>
       <a
-        href="#cta"
+        href="/explorer"
         className="rounded-full bg-primary text-primary-foreground px-5 py-2 text-sm font-medium hover:opacity-90 transition-opacity"
       >
-        Request a Demo
+        Try it for Free
       </a>
     </div>
   </nav>
