@@ -49,9 +49,7 @@ const StatsSection = () => (
         <h2 className="text-3xl md:text-4xl font-bold text-foreground mb-4 tracking-tight">
           Real restaurant data, real insights
         </h2>
-        <p className="text-muted-foreground text-lg mb-6">
-          A snapshot from our England restaurant dataset — the kind of intelligence you'll have for any country.
-        </p>
+        
         <div className="flex flex-wrap items-center justify-center gap-2">
           {countries.map((c, i) => (
             <span
@@ -75,6 +73,9 @@ const StatsSection = () => (
           <a href="https://calendly.com/denis_getplace/30min" target="_blank" rel="noopener noreferrer" className="text-primary hover:underline">
             Request a country →
           </a>
+        </p>
+        <p className="text-muted-foreground text-lg mt-6">
+          A snapshot from our England restaurant dataset — the kind of intelligence you'll have for any country.
         </p>
       </motion.div>
 
