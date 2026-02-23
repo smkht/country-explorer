@@ -73,6 +73,59 @@
 
     <!-- Right panel -->
     <div class="right-panel" id="rightPanel">
+      <!-- Country & Region selectors (always visible) -->
+      <div class="rp-geo-bar">
+        <div class="geo-selectors">
+          <div class="geo-selector">
+            <div class="geo-label">Country</div>
+            <select id="countrySelect" class="geo-select">
+              <option value="england" selected>England</option>
+              <optgroup label="European Union">
+                <option value="austria">Austria</option>
+                <option value="belgium">Belgium</option>
+                <option value="bulgaria">Bulgaria</option>
+                <option value="croatia">Croatia</option>
+                <option value="cyprus">Cyprus</option>
+                <option value="czech">Czech Republic</option>
+                <option value="denmark">Denmark</option>
+                <option value="estonia">Estonia</option>
+                <option value="finland">Finland</option>
+                <option value="france">France</option>
+                <option value="germany">Germany</option>
+                <option value="greece">Greece</option>
+                <option value="hungary">Hungary</option>
+                <option value="ireland">Ireland</option>
+                <option value="italy">Italy</option>
+                <option value="latvia">Latvia</option>
+                <option value="lithuania">Lithuania</option>
+                <option value="luxembourg">Luxembourg</option>
+                <option value="malta">Malta</option>
+                <option value="netherlands">Netherlands</option>
+                <option value="poland">Poland</option>
+                <option value="portugal">Portugal</option>
+                <option value="romania">Romania</option>
+                <option value="slovakia">Slovakia</option>
+                <option value="slovenia">Slovenia</option>
+                <option value="spain">Spain</option>
+                <option value="sweden">Sweden</option>
+              </optgroup>
+            </select>
+          </div>
+          <div class="geo-selector">
+            <div class="geo-label">Region</div>
+            <select id="regionSelect" class="geo-select">
+              <option value="">All Regions</option>
+            </select>
+          </div>
+          <div class="geo-selector" id="citySelectorWrap" style="display:none">
+            <div class="geo-label">City</div>
+            <select id="citySelect" class="geo-select">
+              <option value="">All Cities</option>
+            </select>
+          </div>
+        </div>
+      </div>
+
       <div class="rp-header">
         <div class="rp-tabs">
           <button class="rp-tab active" data-tab="overview">Overview</button>
@@ -84,59 +137,6 @@
 
       <!-- ====== OVERVIEW ====== -->
       <div class="rp-content" id="overviewContent">
-
-        <!-- Country & Region selectors -->
-        <div class="rp-section">
-          <div class="geo-selectors">
-            <div class="geo-selector">
-              <div class="geo-label">Country</div>
-              <select id="countrySelect" class="geo-select">
-                <option value="england" selected>England</option>
-                <optgroup label="European Union">
-                  <option value="austria">Austria</option>
-                  <option value="belgium">Belgium</option>
-                  <option value="bulgaria">Bulgaria</option>
-                  <option value="croatia">Croatia</option>
-                  <option value="cyprus">Cyprus</option>
-                  <option value="czech">Czech Republic</option>
-                  <option value="denmark">Denmark</option>
-                  <option value="estonia">Estonia</option>
-                  <option value="finland">Finland</option>
-                  <option value="france">France</option>
-                  <option value="germany">Germany</option>
-                  <option value="greece">Greece</option>
-                  <option value="hungary">Hungary</option>
-                  <option value="ireland">Ireland</option>
-                  <option value="italy">Italy</option>
-                  <option value="latvia">Latvia</option>
-                  <option value="lithuania">Lithuania</option>
-                  <option value="luxembourg">Luxembourg</option>
-                  <option value="malta">Malta</option>
-                  <option value="netherlands">Netherlands</option>
-                  <option value="poland">Poland</option>
-                  <option value="portugal">Portugal</option>
-                  <option value="romania">Romania</option>
-                  <option value="slovakia">Slovakia</option>
-                  <option value="slovenia">Slovenia</option>
-                  <option value="spain">Spain</option>
-                  <option value="sweden">Sweden</option>
-                </optgroup>
-              </select>
-            </div>
-            <div class="geo-selector">
-              <div class="geo-label">Region</div>
-              <select id="regionSelect" class="geo-select">
-                <option value="">All Regions</option>
-              </select>
-            </div>
-            <div class="geo-selector" id="citySelectorWrap" style="display:none">
-              <div class="geo-label">City</div>
-              <select id="citySelect" class="geo-select">
-                <option value="">All Cities</option>
-              </select>
-            </div>
-          </div>
-        </div>
 
         <!-- KPIs -->
         <div class="rp-section" id="kpiSection">
