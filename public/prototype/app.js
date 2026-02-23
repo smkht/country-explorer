@@ -652,15 +652,23 @@ function buildHexLayer() {
     }).addTo(state.map);
 
   } else {
-    let maxCount = 0;
+  let maxCount = 0;
     let maxPop = 0;
+    const isDensityMetric = state.metric === "density";
     hexGrid.features.forEach(hex => {
       const pts = turf.pointsWithinPolygon(points, hex);
       hex.properties.count = pts.features.length;
       hex.properties.estPop = estimateHexPopulation(hex);
       hex.properties.unlocated = estimateUnlocatedWeight(hex, brandFilter);
       hex.properties.adjustedCount = hex.properties.count + hex.properties.unlocated;
-      if (hex.properties.adjustedCount > maxCount) maxCount = hex.properties.adjustedCount;
+      // For density metric, normalize by hex area (per 1000 km²)
+      if (isDensityMetric) {
+        const hexAreaKm2 = turf.area(hex) / 1e6;
+        hex.properties.displayValue = hexAreaKm2 > 0 ? hex.properties.adjustedCount / (hexAreaKm2 / 1000) : 0;
+      } else {
+        hex.properties.displayValue = hex.properties.adjustedCount;
+      }
+      if (hex.properties.displayValue > maxCount) maxCount = hex.properties.displayValue;
       if (hex.properties.estPop > maxPop) maxPop = hex.properties.estPop;
     });
 
@@ -669,10 +677,10 @@ function buildHexLayer() {
 
     state.hexLayer = L.geoJSON({ type: "FeatureCollection", features: allHexes }, {
       style: f => ({
-        fillColor: hexFillDensity(f.properties.adjustedCount, maxCount, f.properties.estPop, maxPop),
+        fillColor: hexFillDensity(f.properties.displayValue, maxCount, f.properties.estPop, maxPop),
         fillOpacity: 1,
         weight: 1,
-        color: hexStrokeDensity(f.properties.adjustedCount, maxCount, f.properties.estPop, maxPop),
+        color: hexStrokeDensity(f.properties.displayValue, maxCount, f.properties.estPop, maxPop),
         opacity: 1
       }),
       onEachFeature: (feature, layer) => {
@@ -684,7 +692,8 @@ function buildHexLayer() {
         const popPer = (adjCount > 0 && pop > 0) ? (pop / adjCount).toLocaleString('en', {maximumFractionDigits: 0}) : '—';
         const unlocNote = unloc > 0.1 ? ` (+${unloc.toFixed(1)} est.)` : '';
         const popLine = pop > 0 ? `<br>Pop: ~${popK}` + (adjCount > 0 ? ` · 1 per ${popPer} people` : '') : '';
-        layer.bindTooltip(`${c} location${c !== 1 ? 's' : ''}${unlocNote}${popLine}`, { sticky: true });
+        const densityLine = isDensityMetric ? `<br>Density: ${feature.properties.displayValue.toFixed(1)} per 1k km²` : '';
+        layer.bindTooltip(`${c} location${c !== 1 ? 's' : ''}${unlocNote}${popLine}${densityLine}`, { sticky: true });
       }
     }).addTo(state.map);
   }
@@ -768,9 +777,24 @@ function rebuildLocationsLayer() {
 }
 
 // ── Refresh ──
+function refreshBrandCounts() {
+  const region = state.selectedRegion;
+  document.querySelectorAll(".brand-item").forEach(el => {
+    const name = el.querySelector(".brand-name").textContent;
+    const countEl = el.querySelector(".brand-count");
+    if (region) {
+      const regionCounts = state.metrics.region_brand_counts[region] || {};
+      countEl.textContent = fmtInt(regionCounts[name] || 0);
+    } else {
+      countEl.textContent = fmtInt(state.metrics.brand_totals[name] || 0);
+    }
+  });
+}
+
 function refreshAll() {
   if (state.country !== "england") return;
   refreshKPIs();
+  refreshBrandCounts();
   buildHexLayer();
   rebuildLocationsLayer();
   refreshRegionPanel();
