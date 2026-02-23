@@ -182,15 +182,28 @@ async function loadJSON(path) {
 }
 
 // ── Hex colors ──
-function hexFillDensity(count, max) {
-  if (!max || count === 0) return "hsla(230,20%,92%,0.12)";
+function hexFillDensity(count, max, pop, maxPop) {
+  if (!max || count === 0) {
+    // Tint empty cells by population density
+    if (pop > 0 && maxPop > 0) {
+      const t = Math.min(1, pop / maxPop);
+      return `hsla(230,30%,${94 - 10 * t}%,${0.08 + 0.18 * t})`;
+    }
+    return "hsla(230,20%,92%,0.06)";
+  }
   const t = Math.min(1, count / max);
   const l = 90 - 50 * t;
   const a = 0.3 + 0.55 * t;
   return `hsla(230,85%,${l}%,${a})`;
 }
-function hexStrokeDensity(count, max) {
-  if (!max || count === 0) return "rgba(59,91,254,0.15)";
+function hexStrokeDensity(count, max, pop, maxPop) {
+  if (!max || count === 0) {
+    if (pop > 0 && maxPop > 0) {
+      const t = Math.min(1, pop / maxPop);
+      return `rgba(59,91,254,${0.06 + 0.15 * t})`;
+    }
+    return "rgba(59,91,254,0.08)";
+  }
   const t = Math.min(1, count / max);
   return `rgba(59,91,254,${0.08 + 0.35 * t})`;
 }
@@ -523,19 +536,27 @@ function buildHexLayer() {
       hex.properties.estPop = estimateHexPopulation(hex);
     });
 
-    // Show ALL hexagons — empty ones get subtle outlines (like density mode)
-    const allHexes = hexGrid.features;
+    // Track max population for gradient on empty cells
+    state._hexMaxPop = Math.max(1, ...hexGrid.features.map(h => h.properties.estPop || 0));
 
-    state.hexLayer = L.geoJSON({ type: "FeatureCollection", features: allHexes }, {
+    // Show ALL hexagons — empty ones get subtle population-based tint
+    const allHexes = hexGrid.features;
       style: f => {
         const p = f.properties;
-        if (p.total === 0) return { fillColor: "hsla(230,20%,92%,0.12)", fillOpacity: 1, weight: 1, color: "rgba(59,91,254,0.15)", opacity: 1 };
+        const maxPop = state._hexMaxPop || 1;
+        if (p.total === 0) {
+          const pop = p.estPop || 0;
+          const t = maxPop > 0 ? Math.min(1, pop / maxPop) : 0;
+          return { fillColor: `hsla(40,${20 + 30 * t}%,${94 - 12 * t}%,${0.08 + 0.2 * t})`, fillOpacity: 1, weight: 1, color: `rgba(180,140,60,${0.06 + 0.15 * t})`, opacity: 1 };
+        }
         return { fillColor: hexFillHeatmap(p.ratio), fillOpacity: 1, weight: 1, color: hexStrokeHeatmap(p.ratio), opacity: 1 };
       },
       onEachFeature: (feature, layer) => {
         const p = feature.properties;
         if (p.total === 0) {
-          layer.bindTooltip('No stores in this area', { sticky: true });
+          const pop = p.estPop || 0;
+          const popK = pop > 1000 ? (pop / 1000).toFixed(1) + 'k' : pop;
+          layer.bindTooltip(`No stores · Pop: ~${popK}${pop > 0 ? ' — untapped area' : ''}`, { sticky: true });
           return;
         }
         const pctText = !isNaN(p.ratio) ? ` (${(p.ratio * 100).toFixed(0)}% ${state.primaryBrand})` : '';
@@ -551,22 +572,24 @@ function buildHexLayer() {
 
   } else {
     let maxCount = 0;
+    let maxPop = 0;
     hexGrid.features.forEach(hex => {
       const pts = turf.pointsWithinPolygon(points, hex);
       hex.properties.count = pts.features.length;
       hex.properties.estPop = estimateHexPopulation(hex);
       if (hex.properties.count > maxCount) maxCount = hex.properties.count;
+      if (hex.properties.estPop > maxPop) maxPop = hex.properties.estPop;
     });
 
-    // Show ALL hexagons — empty ones get subtle outlines
+    // Show ALL hexagons — empty ones get population-based tint
     const allHexes = hexGrid.features;
 
     state.hexLayer = L.geoJSON({ type: "FeatureCollection", features: allHexes }, {
       style: f => ({
-        fillColor: hexFillDensity(f.properties.count, maxCount),
+        fillColor: hexFillDensity(f.properties.count, maxCount, f.properties.estPop, maxPop),
         fillOpacity: 1,
         weight: 1,
-        color: hexStrokeDensity(f.properties.count, maxCount),
+        color: hexStrokeDensity(f.properties.count, maxCount, f.properties.estPop, maxPop),
         opacity: 1
       }),
       onEachFeature: (feature, layer) => {
