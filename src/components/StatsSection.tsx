@@ -98,55 +98,6 @@ const StatsSection = () => (
 
 
 
-      {/* London deep-dive */}
-      <motion.div
-        initial={{ opacity: 0, y: 20 }}
-        whileInView={{ opacity: 1, y: 0 }}
-        viewport={{ once: true }}
-        transition={{ duration: 0.6 }}
-        className="max-w-4xl mx-auto bg-card rounded-2xl border border-border overflow-hidden"
-      >
-        <div className="px-6 py-4 border-b border-border flex items-center gap-2">
-          <MapPin className="w-4 h-4 text-primary" />
-          <h3 className="font-semibold text-foreground">London — Restaurant Chain Density Breakdown</h3>
-        </div>
-        <div className="px-6 py-4 border-b border-border bg-muted/30">
-          <div className="grid grid-cols-3 gap-6 text-center">
-            <div>
-              <div className="text-2xl font-bold text-foreground">914</div>
-              <div className="text-xs text-muted-foreground">Total Locations</div>
-            </div>
-            <div>
-              <div className="text-2xl font-bold text-foreground">580.9</div>
-              <div className="text-xs text-muted-foreground">Per 1,000 km²</div>
-            </div>
-            <div>
-              <div className="text-2xl font-bold text-foreground">16.0%</div>
-              <div className="text-xs text-muted-foreground">of England Total</div>
-            </div>
-          </div>
-        </div>
-        <table className="w-full">
-          <thead>
-            <tr className="border-b border-border text-sm text-muted-foreground">
-              <th className="px-6 py-3 text-left font-medium">Chain</th>
-              <th className="px-6 py-3 text-right font-medium">Locations</th>
-              <th className="px-6 py-3 text-right font-medium">Share</th>
-              <th className="px-6 py-3 text-right font-medium hidden sm:table-cell">Per 1k km²</th>
-            </tr>
-          </thead>
-          <tbody>
-            {londonBrands.map((b, i) => (
-              <tr key={i} className="border-b border-border last:border-0 hover:bg-muted/50 transition-colors">
-                <td className="px-6 py-3 text-foreground font-medium">{b.name}</td>
-                <td className="px-6 py-3 text-right text-foreground tabular-nums">{b.locations}</td>
-                <td className="px-6 py-3 text-right text-muted-foreground tabular-nums">{b.share}</td>
-                <td className="px-6 py-3 text-right text-muted-foreground tabular-nums hidden sm:table-cell">{b.density}</td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </motion.div>
     </div>
   </section>
 );
