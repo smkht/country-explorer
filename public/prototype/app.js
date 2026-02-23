@@ -1034,22 +1034,26 @@ function wireUI() {
     document.getElementById("heatmapSettings").classList.toggle("hidden", !state.heatmapMode);
     buildHexLayer();
     updateLegend();
+    if (state.guesstimateMode) refreshGuesstimate();
   });
 
   document.getElementById("primaryBrandSelect").addEventListener("change", e => {
     state.primaryBrand = e.target.value;
     buildHexLayer();
+    if (state.guesstimateMode) refreshGuesstimate();
   });
 
   document.getElementById("compareModeSelect").addEventListener("change", e => {
     state.compareMode = e.target.value;
     document.getElementById("secondaryBrandRow").classList.toggle("hidden", e.target.value !== "pick");
     buildHexLayer();
+    if (state.guesstimateMode) refreshGuesstimate();
   });
 
   document.getElementById("secondaryBrandSelect").addEventListener("change", e => {
     state.secondaryBrand = e.target.value;
     buildHexLayer();
+    if (state.guesstimateMode) refreshGuesstimate();
   });
 
   // Guesstimate toggle
