@@ -138,13 +138,13 @@ KPIs:</strong> activation &gt;60%, weekly engagement, monitoring upsell &gt;25%.
               <strong>Stack:</strong> React 18 + Vite + Tailwind + TS. UI: shadcn/ui. Maps: Leaflet. Animations: framer-motion. Backend: Supabase.
             </p>
             <p className="mb-1">
-              <strong>Routes:</strong> <code className="text-[10px] px-1 rounded" style={{ background: "hsl(231 98% 96%)", color: "hsl(231 98% 51%)" }}>/</code> (landing) · <code className="text-[10px] px-1 rounded" style={{ background: "hsl(231 98% 96%)", color: "hsl(231 98% 51%)" }}>/explorer</code> (dashboard). Landing: hero → problem cards → feature tiles → stats → CTA. Explorer: Leaflet map (65%) + sidebar (35%) with tabs.
+              <strong>Layout:</strong> Landing page: hero → problem cards → feature tiles → stats → CTA. Explorer: Leaflet map (65%) + sidebar (35%) with tabs.
             </p>
             <p className="mb-1">
-              <strong>Phase 1 MVP:</strong> Overview tab — choropleth map colored by location density, brand filter checkboxes, KPI cards (total locations, brands, regions), region drilldown panel (brand mix bar, top cities list). Data: client-side filtering over GeoJSON (9 region polygons + 5,718 POIs with brand/city/region). Export tab — CSV + GeoJSON download.
+              <strong>Phase 1:</strong> Overview tab — choropleth map by density, brand filters, KPI cards, region drilldown (brand mix, top cities). Client-side filtering over GeoJSON (9 regions + 5,718 POIs). CSV + GeoJSON export.
             </p>
             <p>
-              <strong>Phase 2 brush strokes:</strong> Deep Review tab adds heatmap toggle (red/green win-lose per hex) and guesstimate engine (saturation scores, gap analysis). Compare tab adds market share bars + regional brand matrix.
+              <strong>Phase 2:</strong> Heatmap toggle (win-lose per hex), guesstimate engine (saturation, gap analysis), market share bars + regional matrix.
             </p>
           </Section>
 
@@ -152,7 +152,7 @@ KPIs:</strong> activation &gt;60%, weekly engagement, monitoring upsell &gt;25%.
           <div className="col-span-2 rounded-xl p-3" style={{ background: "rgba(255,255,255,0.7)", border: "1px solid hsl(220 13% 91%)" }}>
             <h2 className="text-xs font-bold mb-1 uppercase tracking-wide" style={{ color: "hsl(231 98% 61%)" }}>6. Feature Landing Page</h2>
             <p>
-              Fully built at <code className="text-[10px] px-1 rounded" style={{ background: "hsl(231 98% 96%)", color: "hsl(231 98% 51%)" }}>/</code>. Hero: "Map your restaurant competitors in minutes" + dual CTA. Problem cards (3) → feature showcase (4 tiles: coverage map, heatmap, brand comparison, guesstimate) → use cases (expansion, monitoring, benchmarking) → data proof (real numbers, country pills with "Soon" badges) → CTA footer.{" "}
+              Hero: "Map your restaurant competitors in minutes" + dual CTA. Problem cards (3) → feature showcase (4 tiles: coverage map, heatmap, brand comparison, guesstimate) → use cases (expansion, monitoring, benchmarking) → data proof (real numbers, country pills with "Soon" badges) → CTA footer.{" "}
               <strong>Countries live:</strong> Great Britain. <strong>Coming soon:</strong> UAE, Spain, Poland, Hungary, Mexico, Türkiye, Romania, Czech Republic.
             </p>
           </div>
