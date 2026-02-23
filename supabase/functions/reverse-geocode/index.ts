@@ -18,15 +18,15 @@ interface GeoResult {
 
 async function reverseGeocode(lat: number, lng: number): Promise<string | null> {
   try {
-    const url = `https://nominatim.openstreetmap.org/reverse?lat=${lat}&lon=${lng}&format=json&zoom=10&addressdetails=1`;
+    const url = `https://nominatim.openstreetmap.org/reverse?lat=${lat}&lon=${lng}&format=json&zoom=14&addressdetails=1`;
     const res = await fetch(url, {
       headers: { 'User-Agent': 'GetPlace-DataEnrichment/1.0' },
     });
     if (!res.ok) return null;
     const data = await res.json();
     const addr = data.address;
-    // Try city, town, village, hamlet in order
-    return addr?.city || addr?.town || addr?.village || addr?.hamlet || addr?.suburb || null;
+    // Try city, town, village, hamlet, county in order
+    return addr?.city || addr?.town || addr?.village || addr?.hamlet || addr?.suburb || addr?.county || null;
   } catch {
     return null;
   }
