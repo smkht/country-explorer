@@ -1,9 +1,9 @@
 import { motion } from "framer-motion";
 import { Map, BarChart3, Flame, Lightbulb } from "lucide-react";
-import dashboardPreview from "@/assets/dashboard-preview.jpg";
-import heatmapPreview from "@/assets/heatmap-preview.jpg";
-import brandComparePreview from "@/assets/brand-compare-preview.jpg";
-import guesstimatePreview from "@/assets/export-preview.jpg";
+import dashboardPreview from "@/assets/dashboard-preview.png";
+import heatmapPreview from "@/assets/heatmap-preview.png";
+import brandComparePreview from "@/assets/brand-compare-preview.png";
+import guesstimatePreview from "@/assets/export-preview.png";
 
 const features = [
   {

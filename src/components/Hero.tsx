@@ -1,6 +1,6 @@
 import { motion } from "framer-motion";
 import { MapPin } from "lucide-react";
-import dashboardPreview from "@/assets/dashboard-preview.jpg";
+import dashboardPreview from "@/assets/dashboard-preview.png";
 
 const Hero = () => (
   <section className="relative pt-32 pb-20 overflow-hidden">
