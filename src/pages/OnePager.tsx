@@ -8,7 +8,7 @@ const OnePager = () => {
   const handlePrint = () => window.print();
 
   return (
-    <div className="min-h-screen" style={{ background: "linear-gradient(135deg, hsl(225 30% 96%) 0%, hsl(231 40% 92%) 100%)", fontFamily: "'DM Sans', sans-serif" }}>
+    <div className="min-h-screen" style={{ background: "hsl(225 20% 97%)", fontFamily: "'DM Sans', sans-serif" }}>
       {/* Print button - hidden in print */}
       <div className="print:hidden fixed top-4 right-4 z-50 flex gap-2">
         <button
