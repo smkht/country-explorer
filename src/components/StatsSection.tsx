@@ -18,13 +18,16 @@ const brands = [
 ];
 
 const countries = [
-  { name: "England", status: "live", brands: 6, locations: "5,718" },
-  { name: "Germany", status: "coming", brands: null, locations: null },
-  { name: "France", status: "coming", brands: null, locations: null },
+  { name: "Great Britain", status: "live", brands: 6, locations: "5,718" },
+  { name: "UAE", status: "coming", brands: null, locations: null },
   { name: "Spain", status: "coming", brands: null, locations: null },
-  { name: "Italy", status: "coming", brands: null, locations: null },
-  { name: "Netherlands", status: "coming", brands: null, locations: null },
   { name: "Poland", status: "coming", brands: null, locations: null },
+  { name: "Hungary", status: "coming", brands: null, locations: null },
+  { name: "Mexico", status: "coming", brands: null, locations: null },
+  { name: "Türkiye", status: "coming", brands: null, locations: null },
+  { name: "Romania", status: "coming", brands: null, locations: null },
+  { name: "Czech Republic", status: "coming", brands: null, locations: null },
+  { name: "More to come…", status: "placeholder", brands: null, locations: null },
 ];
 
 const londonBrands = [
@@ -57,6 +60,8 @@ const StatsSection = () => (
               className={`inline-flex items-center gap-1.5 text-sm font-medium px-3 py-1.5 rounded-full border ${
                 c.status === "live"
                   ? "bg-accent text-primary border-primary/20"
+                  : c.status === "placeholder"
+                  ? "bg-transparent text-muted-foreground border-dashed border-border italic"
                   : "bg-muted text-muted-foreground border-border"
               }`}
             >
@@ -69,7 +74,7 @@ const StatsSection = () => (
           ))}
         </div>
         <p className="text-xs text-muted-foreground mt-3">
-          More EU countries rolling out quarterly.{" "}
+          More countries rolling out quarterly.{" "}
           <a href="https://calendly.com/denis_getplace/30min" target="_blank" rel="noopener noreferrer" className="text-primary hover:underline">
             Request a country →
           </a>
