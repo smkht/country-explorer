@@ -7,203 +7,190 @@
   <link rel="stylesheet" href="styles.css"/>
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
         integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin=""/>
+  <script src="https://cdn.jsdelivr.net/npm/@turf/turf@7/turf.min.js"></script>
 </head>
 <body>
-  <div class="header">
-    <div class="header-inner">
-      <div class="brand">
-        <div class="logo"></div>
-        <div>
-          <h1>Country Explorer</h1>
-          <div class="sub">Competitive landscape · <strong>England</strong> · Snapshot: <span id="snapshotDate">—</span></div>
-        </div>
-      </div>
-      <div class="nav">
-        <button class="active" data-tab="overview">Overview</button>
-        <button data-tab="compare">Brand Compare</button>
-        <button data-tab="export">Export</button>
-      </div>
+
+  <!-- Thin dark sidebar -->
+  <aside class="sidebar">
+    <div class="sidebar-logo">
+      <svg width="24" height="24" viewBox="0 0 24 24" fill="none"><rect width="24" height="24" rx="6" fill="#3B5BFE"/><path d="M7 12l3 3 7-7" stroke="#fff" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
     </div>
-  </div>
-
-  <div class="container">
-    <!-- Left panel -->
-    <div class="panel" id="leftPanel">
-      <div class="title">
-        <h2>Filters & KPIs</h2>
-        <span class="badge"><span class="dot"></span> England</span>
-      </div>
-      <div class="content">
-        <div class="controls">
-          <label>Brands</label>
-          <div class="chips" id="brandChips"></div>
-
-          <label>Map Metric</label>
-          <select id="metricSelect">
-            <option value="count">Total locations</option>
-            <option value="density">Locations per 1,000 km²</option>
-          </select>
-
-          <label>Quick Actions</label>
-          <div class="chips">
-            <div class="chip" id="clearRegion">Clear region</div>
-            <div class="chip" id="selectAllBrands">All brands</div>
-            <div class="chip" id="selectTop3Brands">Top 3 brands</div>
-          </div>
-        </div>
-
-        <div style="height:16px"></div>
-
-        <div class="kpi-grid">
-          <div class="kpi">
-            <div class="label">Locations</div>
-            <div class="value" id="kpiTotal">—</div>
-            <div class="hint">Selected brands</div>
-          </div>
-          <div class="kpi">
-            <div class="label">Regions</div>
-            <div class="value" id="kpiRegions">—</div>
-            <div class="hint">With ≥1 location</div>
-          </div>
-          <div class="kpi">
-            <div class="label">Densest Region</div>
-            <div class="value" id="kpiDense">—</div>
-            <div class="hint">By selected metric</div>
-          </div>
-          <div class="kpi">
-            <div class="label">London Share</div>
-            <div class="value" id="kpiLondonShare">—</div>
-            <div class="hint">Selected brands</div>
-          </div>
-        </div>
-
-        <div style="height:16px"></div>
-
-        <div class="callout" id="insightsBox">
-          <strong>Insights</strong><br/>
-          Subway has the largest footprint across England. Nando's is relatively London-heavy compared to other brands. Use Brand Compare to quantify concentration.
-        </div>
-      </div>
+    <nav class="sidebar-nav">
+      <button class="sidebar-btn active" data-tab="overview" title="Coverage Map">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/></svg>
+      </button>
+      <button class="sidebar-btn" data-tab="compare" title="Brand Compare">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg>
+      </button>
+      <button class="sidebar-btn" data-tab="export" title="Export">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+      </button>
+    </nav>
+    <div class="sidebar-bottom">
+      <button class="sidebar-btn" title="Settings">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 01-2.83 2.83l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 01-4 0v-.09A1.65 1.65 0 009 19.4a1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 01-2.83-2.83l.06-.06A1.65 1.65 0 004.68 15a1.65 1.65 0 00-1.51-1H3a2 2 0 010-4h.09A1.65 1.65 0 004.6 9a1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 012.83-2.83l.06.06A1.65 1.65 0 009 4.68a1.65 1.65 0 001-1.51V3a2 2 0 014 0v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 012.83 2.83l-.06.06A1.65 1.65 0 0019.4 9a1.65 1.65 0 001.51 1H21a2 2 0 010 4h-.09a1.65 1.65 0 00-1.51 1z"/></svg>
+      </button>
     </div>
+  </aside>
 
-    <!-- Center map -->
-    <div class="panel">
-      <div class="title">
-        <h2>Coverage Map</h2>
-        <span class="badge"><span class="dot"></span> <span id="selectedRegionText">Click a region to drill down</span></span>
+  <!-- Main content area -->
+  <div class="app-layout">
+    <!-- Map area -->
+    <div class="map-area" id="mapArea">
+      <!-- Search bar floating on map -->
+      <div class="map-search">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#6b7394" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+        <input type="text" placeholder="Search location" id="searchInput" />
       </div>
-      <div class="content map-wrap">
-        <div id="map"></div>
+
+      <!-- Map legend -->
+      <div class="map-legend" id="mapLegend">
+        <div class="legend-title">Location density</div>
+        <div class="legend-scale">
+          <span class="legend-block" style="background:rgba(59,91,254,0.08)"></span>
+          <span class="legend-block" style="background:rgba(59,91,254,0.18)"></span>
+          <span class="legend-block" style="background:rgba(59,91,254,0.30)"></span>
+          <span class="legend-block" style="background:rgba(59,91,254,0.42)"></span>
+          <span class="legend-block" style="background:rgba(59,91,254,0.55)"></span>
+          <span class="legend-block" style="background:rgba(59,91,254,0.70)"></span>
+        </div>
+        <div class="legend-labels">
+          <span>Low</span>
+          <span>High</span>
+        </div>
       </div>
+
+      <div id="map"></div>
     </div>
 
     <!-- Right panel -->
-    <div class="panel" id="rightPanel">
-      <div class="title">
-        <h2 id="rightTitle">Region Details</h2>
-        <span class="badge"><span class="dot"></span> <span id="regionMetricText">—</span></span>
+    <div class="right-panel" id="rightPanel">
+      <!-- Header tabs -->
+      <div class="rp-header">
+        <div class="rp-tabs">
+          <button class="rp-tab active" data-tab="overview">Overview</button>
+          <button class="rp-tab" data-tab="compare">Brand Compare</button>
+          <button class="rp-tab" data-tab="export">Export</button>
+        </div>
       </div>
-      <div class="content">
-        <div id="regionEmpty" class="small" style="text-align:center; padding:32px 0;">
-          <div style="font-size:32px; margin-bottom:12px;">🗺️</div>
-          Click a region on the map to see brand breakdowns, top cities, and comparisons.
+
+      <!-- Overview content -->
+      <div class="rp-content" id="overviewContent">
+        <!-- Filter row -->
+        <div class="rp-filters">
+          <div class="filter-dropdown">
+            <span>England</span>
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="6 9 12 15 18 9"/></svg>
+          </div>
+          <div class="filter-dropdown" id="regionDropdown">
+            <span id="regionDropdownText">All Regions</span>
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="6 9 12 15 18 9"/></svg>
+          </div>
         </div>
 
-        <div id="regionDetails" class="hidden">
-          <div class="kpi-grid">
-            <div class="kpi">
-              <div class="label">Locations</div>
-              <div class="value" id="regionTotal">—</div>
-              <div class="hint">Selected brands</div>
+        <!-- Brand filter chips -->
+        <div class="rp-section">
+          <div class="rp-brand-row">
+            <div class="filter-dropdown" style="min-width:auto">
+              <span id="brandFilterLabel">All Brands</span>
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="6 9 12 15 18 9"/></svg>
             </div>
-            <div class="kpi">
-              <div class="label">Top Brand</div>
-              <div class="value" id="regionTopBrand">—</div>
-              <div class="hint" id="regionTopBrandHint">—</div>
+            <div class="rp-metric-toggle">
+              <select id="metricSelect">
+                <option value="count">Total locations</option>
+                <option value="density">Per 1,000 km²</option>
+              </select>
             </div>
           </div>
+          <div class="chips" id="brandChips"></div>
+        </div>
 
-          <div style="height:16px"></div>
+        <!-- KPI summary -->
+        <div class="rp-section">
+          <div class="rp-kpi-bar">
+            <div class="rp-kpi">
+              <div class="rp-kpi-value" id="kpiTotal">—</div>
+              <div class="rp-kpi-label">Locations</div>
+            </div>
+            <div class="rp-kpi-divider"></div>
+            <div class="rp-kpi">
+              <div class="rp-kpi-value" id="kpiRegions">—</div>
+              <div class="rp-kpi-label">Regions</div>
+            </div>
+            <div class="rp-kpi-divider"></div>
+            <div class="rp-kpi">
+              <div class="rp-kpi-value" id="kpiDense">—</div>
+              <div class="rp-kpi-label">Top Region</div>
+            </div>
+            <div class="rp-kpi-divider"></div>
+            <div class="rp-kpi">
+              <div class="rp-kpi-value" id="kpiLondonShare">—</div>
+              <div class="rp-kpi-label">London %</div>
+            </div>
+          </div>
+        </div>
 
-          <div>
-            <div style="margin-bottom:8px;color:var(--muted);font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:0.4px">Brand Mix</div>
-            <table class="table" id="regionBrandTable"></table>
+        <!-- Region detail -->
+        <div class="rp-section">
+          <div class="rp-section-header">
+            <span id="selectedRegionText">Click a region to drill down</span>
+            <button class="rp-clear-btn hidden" id="clearRegion">✕</button>
           </div>
 
-          <div style="height:16px"></div>
+          <div id="regionEmpty" class="rp-empty">
+            Click a hexagonal area on the map to see brand breakdowns and top cities.
+          </div>
 
-          <div>
-            <div style="margin-bottom:8px;color:var(--muted);font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:0.4px">Top Cities</div>
-            <table class="table" id="regionCityTable"></table>
+          <div id="regionDetails" class="hidden">
+            <div class="rp-kpi-bar compact">
+              <div class="rp-kpi">
+                <div class="rp-kpi-value" id="regionTotal">—</div>
+                <div class="rp-kpi-label">Locations</div>
+              </div>
+              <div class="rp-kpi-divider"></div>
+              <div class="rp-kpi">
+                <div class="rp-kpi-value" id="regionTopBrand">—</div>
+                <div class="rp-kpi-label" id="regionTopBrandHint">Top Brand</div>
+              </div>
+            </div>
+
+            <div class="rp-table-section">
+              <div class="rp-table-title">Brand Mix</div>
+              <table class="table" id="regionBrandTable"></table>
+            </div>
+
+            <div class="rp-table-section">
+              <div class="rp-table-title">Top Cities</div>
+              <table class="table" id="regionCityTable"></table>
+            </div>
           </div>
         </div>
       </div>
-    </div>
-  </div>
 
-  <!-- Compare tab -->
-  <div class="container hidden" id="compareTab">
-    <div class="panel" style="grid-column: span 2">
-      <div class="title"><h2>Brand Compare</h2></div>
-      <div class="content">
-        <div class="small" style="margin-bottom:16px">
-          Compare brand footprints across England — total locations, London concentration, and regional strengths.
-        </div>
-        <table class="table" id="compareTable"></table>
-      </div>
-    </div>
-
-    <div class="panel">
-      <div class="title"><h2>How to Use</h2></div>
-      <div class="content">
-        <ol class="small" style="line-height:1.7; padding-left:16px">
-          <li>Toggle brands in the Overview filters.</li>
-          <li>Use the map to spot high-intensity regions.</li>
-          <li>Click a region for brand mix + top cities.</li>
-          <li>Export filtered data as CSV or GeoJSON.</li>
-        </ol>
-        <div style="height:12px"></div>
-        <div class="callout">
-          <strong>Example</strong><br/>
-          Compare Domino's vs Papa Johns region-by-region. Find whitespace cities, then prioritize your new store pipeline.
+      <!-- Compare content -->
+      <div class="rp-content hidden" id="compareContent">
+        <div class="rp-section">
+          <p class="rp-desc">Compare brand footprints across England — total locations, London concentration, and regional strengths.</p>
+          <table class="table" id="compareTable"></table>
         </div>
       </div>
-    </div>
-  </div>
 
-  <!-- Export tab -->
-  <div class="container hidden" id="exportTab">
-    <div class="panel" style="grid-column: span 2">
-      <div class="title"><h2>Export Data</h2></div>
-      <div class="content">
-        <div class="small" style="margin-bottom:16px">
-          Download the currently selected brands (and optionally a specific region) in your preferred format.
-        </div>
-
-        <div class="chips">
-          <div class="chip" id="exportCsv" style="padding:10px 20px;font-size:13px">📄 Download CSV</div>
-          <div class="chip" id="exportGeojson" style="padding:10px 20px;font-size:13px">🗺️ Download GeoJSON</div>
-        </div>
-
-        <div class="footer-note">
-          In production: scheduled exports, shareable links, and API access for BI tools.
-        </div>
-      </div>
-    </div>
-
-    <div class="panel">
-      <div class="title"><h2>What's Included</h2></div>
-      <div class="content">
-        <ul class="small" style="line-height:1.7; padding-left:16px">
-          <li>Location ID, brand, name</li>
-          <li>Address (city, postcode)</li>
-          <li>Coordinates (lat/lng)</li>
-          <li>Region (ITL1)</li>
-        </ul>
-        <div style="height:12px"></div>
-        <div class="callout">
-          <strong>Coming soon</strong><br/>
-          Opening/closing dates, platform presence, delivery zones, and visibility snapshots.
+      <!-- Export content -->
+      <div class="rp-content hidden" id="exportContent">
+        <div class="rp-section">
+          <p class="rp-desc">Download the currently selected brands (and optionally a specific region) in your preferred format.</p>
+          <div class="export-buttons">
+            <button class="export-btn" id="exportCsv">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+              Download CSV
+            </button>
+            <button class="export-btn" id="exportGeojson">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0118 0z"/><circle cx="12" cy="10" r="3"/></svg>
+              Download GeoJSON
+            </button>
+          </div>
+          <div class="rp-footnote">In production: scheduled exports, shareable links, and API access for BI tools.</div>
         </div>
       </div>
     </div>
