@@ -1,8 +1,9 @@
 import { motion } from "framer-motion";
-import { Map, BarChart3, Download } from "lucide-react";
+import { Map, BarChart3, Flame, Lightbulb } from "lucide-react";
 import dashboardPreview from "@/assets/dashboard-preview.jpg";
+import heatmapPreview from "@/assets/heatmap-preview.jpg";
 import brandComparePreview from "@/assets/brand-compare-preview.jpg";
-import exportPreview from "@/assets/export-preview.jpg";
+import guesstimatePreview from "@/assets/export-preview.jpg";
 
 const features = [
   {
@@ -10,27 +11,36 @@ const features = [
     title: "Coverage Map",
     subtitle: "Region & city presence for your competitor set",
     description:
-      "Interactive choropleth maps show density by region. Click any area to drill down into brand mix, top cities, and concentration signals.",
+      "Interactive honeycomb density maps show where brands cluster. Click any region to drill into brand mix, top cities, and store-level dots — zoom in and the hexagons adapt in real time.",
     image: dashboardPreview,
-    alt: "Country Explorer coverage map with region drilldown",
+    alt: "Country Explorer coverage map with honeycomb density grid over England",
+  },
+  {
+    icon: Flame,
+    title: "Competitive Heatmap",
+    subtitle: "See who's winning in every neighbourhood",
+    description:
+      "Toggle heatmap mode to compare your brand against all competitors or a specific rival. Red means they dominate, green means you lead — instantly spot market gaps across the entire country.",
+    image: heatmapPreview,
+    alt: "Competitive heatmap showing McDonald's vs competitors with traffic-light coloring",
   },
   {
     icon: BarChart3,
-    title: "Brand Benchmarking",
-    subtitle: "Compare brands with a consistent scorecard",
+    title: "Brand Comparison",
+    subtitle: "Head-to-head analytics across every dimension",
     description:
-      "Head-to-head comparison of total locations, market share in key cities, top regions, and concentration patterns across your competitive set.",
+      "Market share bars, regional presence matrix, concentration analysis, and auto-generated insights. See which brands are distributed vs concentrated, who dominates London, and where the whitespace is.",
     image: brandComparePreview,
-    alt: "Brand comparison scorecard with analytics",
+    alt: "Brand comparison dashboard with market share bars and regional heatgrid",
   },
   {
-    icon: Download,
-    title: "Actionable Exports",
-    subtitle: "CSV, GeoJSON, and client-ready reports",
+    icon: Lightbulb,
+    title: "Guesstimate Engine",
+    subtitle: "Data-driven expansion advice, powered by real numbers",
     description:
-      "Export filtered locations for your BI tools. Generate shortlists of target cities with low competitor density — ready for your next board meeting.",
-    image: exportPreview,
-    alt: "Data export interface with CSV and GeoJSON options",
+      "Turn on Guesstimate for instant market intelligence: saturation scores, whitespace opportunities scored by city, strongest & weakest regions with gap analysis, and actionable expansion advice — all derived from actual store data.",
+    image: guesstimatePreview,
+    alt: "Guesstimate market insights panel with whitespace opportunities and growth targets",
   },
 ];
 

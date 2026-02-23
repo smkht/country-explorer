@@ -735,26 +735,114 @@ function flyToCityOrData(cityName, region) {
 
 function refreshCompareTab() {
   const brands = state.metrics.brands;
-  const rows = brands.map(b => {
+  const selected = selectedArr();
+  const totalAll = selected.reduce((s, b) => s + (state.metrics.brand_totals[b] || 0), 0);
+
+  const rows = selected.map(b => {
     const total = state.metrics.brand_totals[b] || 0;
     const london = (state.metrics.region_brand_counts["London"] || {})[b] || 0;
-    const shares = state.metrics.regions.map(r => {
+    const regionShares = state.metrics.regions.map(r => {
       const c = (state.metrics.region_brand_counts[r] || {})[b] || 0;
-      return { region: r.replace(" (England)", ""), count: c, share: total ? c / total : 0 };
+      return { region: r, label: r.replace(" (England)", ""), count: c, share: total ? c / total : 0 };
     }).sort((a, b) => b.count - a.count);
-    return { brand: b, total, londonShare: total ? london / total : 0, top1: shares[0] };
+    // Concentration: how much of their total is in top 3 regions
+    const top3Share = regionShares.slice(0, 3).reduce((s, r) => s + r.count, 0) / (total || 1);
+    const regionCounts = {};
+    state.metrics.regions.forEach(r => { regionCounts[r] = (state.metrics.region_brand_counts[r] || {})[b] || 0; });
+    return { brand: b, total, share: totalAll ? total / totalAll : 0, londonShare: total ? london / total : 0, top1: regionShares[0], top3Share, regionCounts, regionShares };
   }).sort((a, b) => b.total - a.total);
 
+  // ── KPIs ──
+  const leader = rows[0];
+  const smallest = rows[rows.length - 1];
+  document.getElementById("compareKpis").innerHTML = `
+    <div class="rp-kpi-card"><div class="rp-kpi-value">${fmtInt(totalAll)}</div><div class="rp-kpi-label">Total Locations</div></div>
+    <div class="rp-kpi-card"><div class="rp-kpi-value">${selected.length}</div><div class="rp-kpi-label">Brands Compared</div></div>
+    <div class="rp-kpi-card"><div class="rp-kpi-value">${leader ? leader.brand.split("'")[0] : '—'}</div><div class="rp-kpi-label">Market Leader</div></div>
+    <div class="rp-kpi-card"><div class="rp-kpi-value">${leader ? fmtPct(leader.share) : '—'}</div><div class="rp-kpi-label">Leader Share</div></div>
+  `;
+
+  // ── Market Share Bars ──
+  const maxTotal = Math.max(...rows.map(r => r.total));
+  document.getElementById("compareShareBars").innerHTML = rows.map(r => {
+    const pct = maxTotal > 0 ? (r.total / maxTotal * 100) : 0;
+    return `<div class="share-bar-row">
+      <span class="share-bar-label">${r.brand}</span>
+      <div class="share-bar-track">
+        <div class="share-bar-fill" style="width:${pct}%;background:${BRAND_COLORS[r.brand] || '#3B5BFE'}">
+          <span class="share-bar-value">${fmtPct(r.share)}</span>
+        </div>
+      </div>
+      <span class="share-bar-count">${fmtInt(r.total)}</span>
+    </div>`;
+  }).join("");
+
+  // ── Leaderboard Table ──
   document.getElementById("compareTable").innerHTML = `
-    <tr><th>#</th><th>Brand</th><th class="num">Total</th><th class="num">London %</th><th>Top Region</th></tr>
+    <tr><th>#</th><th>Brand</th><th class="num">Total</th><th class="num">Share</th><th class="num">London %</th><th>Strongest</th></tr>
     ${rows.map((r, i) => `<tr>
-      <td style="color:var(--muted)">${i + 1}</td>
+      <td style="color:var(--muted);font-weight:700">${i + 1}</td>
       <td><div class="brand-dot-cell"><span class="brand-dot" style="background:${BRAND_COLORS[r.brand]||'#3B5BFE'};width:8px;height:8px"></span><strong>${r.brand}</strong></div></td>
       <td class="num">${fmtInt(r.total)}</td>
+      <td class="num">${fmtPct(r.share)}</td>
       <td class="num">${fmtPct(r.londonShare)}</td>
-      <td style="font-size:11px;color:var(--muted)">${r.top1.region} (${fmtPct(r.top1.share)})</td>
+      <td style="font-size:11px;color:var(--muted)">${r.top1.label} (${fmtPct(r.top1.share)})</td>
     </tr>`).join("")}
   `;
+
+  // ── Regional Presence Matrix ──
+  const shortRegions = state.metrics.regions.map(r => r.replace(" (England)", "").replace("Yorkshire and The Humber", "Yorks"));
+  const matrixRows = rows.map(r => {
+    const cells = state.metrics.regions.map(reg => {
+      const c = r.regionCounts[reg] || 0;
+      const regTotal = state.metrics.region_totals[reg] || 1;
+      const intensity = c / regTotal; // share in this region
+      const bg = intensity > 0.25 ? 'rgba(67,160,71,0.2)' : intensity > 0.15 ? 'rgba(255,152,0,0.15)' : intensity > 0.05 ? 'rgba(59,91,254,0.1)' : 'transparent';
+      const color = intensity > 0.25 ? '#2E7D32' : intensity > 0.15 ? '#E65100' : 'var(--text)';
+      return `<td><span class="cell-heat" style="background:${bg};color:${color}">${c}</span></td>`;
+    });
+    return `<tr><td><div class="brand-dot-cell"><span class="brand-dot" style="background:${BRAND_COLORS[r.brand]||'#3B5BFE'};width:6px;height:6px"></span>${r.brand}</div></td>${cells.join("")}</tr>`;
+  });
+
+  document.getElementById("compareMatrix").innerHTML = `
+    <table>
+      <tr><th></th>${shortRegions.map(r => `<th>${r}</th>`).join("")}</tr>
+      ${matrixRows.join("")}
+    </table>
+  `;
+
+  // ── Concentration Analysis ──
+  document.getElementById("compareConcentration").innerHTML = `
+    <tr><th>Brand</th><th class="num">Top 3 Regions %</th><th class="num">London Lean</th><th>Profile</th></tr>
+    ${rows.map(r => {
+      const profile = r.top3Share > 0.55 ? 'Concentrated' : r.top3Share > 0.45 ? 'Balanced' : 'Distributed';
+      const profileColor = profile === 'Concentrated' ? '#E53935' : profile === 'Balanced' ? '#FF9800' : '#43A047';
+      return `<tr>
+        <td><div class="brand-dot-cell"><span class="brand-dot" style="background:${BRAND_COLORS[r.brand]||'#3B5BFE'};width:8px;height:8px"></span>${r.brand}</div></td>
+        <td class="num">${fmtPct(r.top3Share)}</td>
+        <td class="num">${r.londonShare > 0.2 ? '🔥 High' : r.londonShare > 0.12 ? '⚡ Medium' : '✅ Low'}</td>
+        <td><span style="color:${profileColor};font-weight:700;font-size:11px">${profile}</span></td>
+      </tr>`;
+    }).join("")}
+  `;
+
+  // ── Key Insights (auto-generated) ──
+  const insights = [];
+  if (leader) {
+    insights.push(`<div class="insight-card"><span class="insight-icon">👑</span><strong>${leader.brand}</strong> leads with ${fmtInt(leader.total)} locations (${fmtPct(leader.share)} market share), strongest in ${leader.top1.label}.</div>`);
+  }
+  if (smallest && rows.length > 1) {
+    insights.push(`<div class="insight-card"><span class="insight-icon">📉</span><strong>${smallest.brand}</strong> has the smallest footprint at ${fmtInt(smallest.total)} locations — potential growth opportunity or niche strategy.</div>`);
+  }
+  const highLondon = rows.filter(r => r.londonShare > 0.18);
+  if (highLondon.length > 0) {
+    insights.push(`<div class="insight-card"><span class="insight-icon">🏙️</span>${highLondon.map(r => `<strong>${r.brand}</strong>`).join(" and ")} ${highLondon.length > 1 ? 'are' : 'is'} heavily concentrated in London (${highLondon.map(r => fmtPct(r.londonShare)).join(", ")}), leaving regional markets open.</div>`);
+  }
+  const distributed = rows.filter(r => r.top3Share < 0.45);
+  if (distributed.length > 0) {
+    insights.push(`<div class="insight-card"><span class="insight-icon">🌍</span>${distributed.map(r => `<strong>${r.brand}</strong>`).join(" and ")} ${distributed.length > 1 ? 'have' : 'has'} the most evenly distributed presence across all regions.</div>`);
+  }
+  document.getElementById("compareInsights").innerHTML = insights.join("");
 }
 
 function refreshExportInfo() {
