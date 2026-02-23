@@ -30,7 +30,7 @@ const features = [
     subtitle: "Head-to-head restaurant chain analytics across every dimension",
     description:
       "Market share bars, regional presence matrix, concentration analysis, and auto-generated insights. See which restaurant chains are distributed vs concentrated, who dominates London, and where the whitespace is for your next opening.",
-    image: brandComparePreview,
+    image: guesstimatePreview,
     alt: "Brand comparison dashboard with market share bars and regional heatgrid for restaurant chains",
   },
   {
@@ -39,7 +39,7 @@ const features = [
     subtitle: "AI-powered expansion advice based on real restaurant data",
     description:
       "Get instant market intelligence: saturation scores, whitespace opportunities scored by city, strongest & weakest regions with gap analysis, and actionable expansion advice — all derived from actual restaurant store data. Know exactly which cities to target next.",
-    image: guesstimatePreview,
+    image: brandComparePreview,
     alt: "Guesstimate market insights panel with whitespace opportunities and growth targets for restaurant chains",
   },
 ];
