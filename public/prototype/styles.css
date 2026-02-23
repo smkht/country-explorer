@@ -212,6 +212,17 @@ body { font-family: var(--sans); background: var(--bg); color: var(--text); -web
 .faceoff-row { display: flex; justify-content: space-between; font-size: 12px; padding: 3px 0; border-bottom: 1px solid var(--border); }
 .faceoff-lead { font-weight: 700; color: var(--accent); font-size: 11px; }
 
+/* ── Enterprise locked features ── */
+.enterprise-locked-section { background: linear-gradient(135deg, rgba(107,115,148,0.06), rgba(107,115,148,0.03)); border: 1px solid var(--border); border-radius: 10px; padding: 14px !important; }
+.enterprise-badge { display: inline-flex; align-items: center; gap: 4px; background: var(--panel2); border: 1px solid var(--border); color: var(--muted); font-size: 10px; font-weight: 700; padding: 3px 10px; border-radius: 20px; margin-bottom: 10px; text-transform: uppercase; letter-spacing: 0.5px; }
+.enterprise-features { display: flex; flex-direction: column; gap: 8px; }
+.enterprise-feature-card { background: var(--panel); border: 1px solid var(--border); border-radius: 8px; padding: 10px 12px; opacity: 0.65; display: flex; gap: 10px; align-items: flex-start; }
+.enterprise-feature-icon { font-size: 18px; flex-shrink: 0; margin-top: 1px; }
+.enterprise-feature-title { font-size: 12px; font-weight: 700; color: var(--text); margin-bottom: 2px; }
+.enterprise-feature-desc { font-size: 10px; color: var(--muted); line-height: 1.4; }
+.enterprise-cta { display: block; text-align: center; margin-top: 10px; padding: 8px 14px; background: var(--text); color: #fff; font-size: 12px; font-weight: 700; border-radius: 8px; text-decoration: none; transition: opacity 0.15s; }
+.enterprise-cta:hover { opacity: 0.85; }
+
 .hidden { display: none !important; }
 
 @media (max-width: 900px) {
