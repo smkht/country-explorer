@@ -182,23 +182,23 @@ function hexStrokeDensity(count, max) {
 }
 
 function hexFillHeatmap(ratio) {
-  if (isNaN(ratio)) return "hsla(0,0%,90%,0.15)";
+  if (isNaN(ratio)) return "hsla(0,0%,90%,0.08)";
   const t = Math.max(0, Math.min(1, ratio));
   if (t < 0.5) {
     const p = t / 0.5;
     const h = p * 60;
-    return `hsla(${h},90%,${50 - 8 * (1 - p)}%,${0.75 + 0.2 * (1 - p)})`;
+    return `hsla(${h},90%,${50 - 8 * (1 - p)}%,${0.35 + 0.15 * (1 - p)})`;
   } else {
     const p = (t - 0.5) / 0.5;
     const h = 60 + p * 60;
-    return `hsla(${h},75%,${45 - 5 * p}%,${0.7 + 0.25 * p})`;
+    return `hsla(${h},75%,${45 - 5 * p}%,${0.3 + 0.2 * p})`;
   }
 }
 function hexStrokeHeatmap(ratio) {
-  if (isNaN(ratio)) return "rgba(0,0,0,0.08)";
+  if (isNaN(ratio)) return "rgba(0,0,0,0.05)";
   const t = Math.max(0, Math.min(1, ratio));
-  if (t < 0.5) return `rgba(229,57,53,${0.3 + 0.25 * (1 - t * 2)})`;
-  return `rgba(76,175,80,${0.3 + 0.25 * ((t - 0.5) * 2)})`;
+  if (t < 0.5) return `rgba(229,57,53,${0.2 + 0.15 * (1 - t * 2)})`;
+  return `rgba(76,175,80,${0.2 + 0.15 * ((t - 0.5) * 2)})`;
 }
 
 function cellSizeForZoom(zoom) {
