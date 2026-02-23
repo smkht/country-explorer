@@ -157,14 +157,15 @@
         </div>
 
         <!-- Heatmap mode -->
-        <div class="rp-section" id="heatmapSection">
+        <div class="rp-section heatmap-section-highlight" id="heatmapSection">
           <div class="rp-section-header">
-            <span>Heatmap Mode</span>
+            <span>🔥 Heatmap Mode</span>
             <label class="toggle-switch">
               <input type="checkbox" id="heatmapToggle" />
               <span class="toggle-slider"></span>
             </label>
           </div>
+          <div class="heatmap-hint" id="heatmapHint">Toggle to see competitive heat — red = losing, green = winning</div>
           <div id="heatmapSettings" class="heatmap-settings hidden">
             <div class="heatmap-row">
               <div class="geo-label">Primary Brand</div>
@@ -187,6 +188,19 @@
               <div class="heatmap-legend-label">More stores</div>
             </div>
           </div>
+        </div>
+
+        <!-- Guesstimate mode -->
+        <div class="rp-section guesstimate-section-highlight" id="guesstimateSection">
+          <div class="rp-section-header">
+            <span>⚡ Guesstimate</span>
+            <label class="toggle-switch">
+              <input type="checkbox" id="guesstimateToggle" />
+              <span class="toggle-slider"></span>
+            </label>
+          </div>
+          <div class="guesstimate-hint">Turn on for AI-powered market insights using simulated data</div>
+          <div id="guesstimatePanel" class="hidden"></div>
         </div>
 
         <!-- Brands section -->
