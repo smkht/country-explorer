@@ -14,15 +14,15 @@ const OnePager = () => {
         <button
           onClick={handlePrint}
           className="px-4 py-2 rounded-lg text-sm font-medium transition-opacity hover:opacity-90"
-          style={{ background: "hsl(231 98% 61%)", color: "white" }}
-        >
+          style={{ background: "hsl(231 98% 61%)", color: "white" }}>
+
           Save as PDF
         </button>
         <a
           href="/"
           className="px-4 py-2 rounded-lg text-sm font-medium transition-colors"
-          style={{ background: "white", color: "hsl(220 20% 10%)" }}
-        >
+          style={{ background: "white", color: "hsl(220 20% 10%)" }}>
+
           ← Back
         </a>
       </div>
@@ -39,8 +39,9 @@ const OnePager = () => {
               </svg>
             </div>
             <div>
-              <h1 className="text-xl font-bold tracking-tight" style={{ color: "hsl(231 98% 61%)" }}>Country Explorer</h1>
-              <p className="text-[10px]" style={{ color: "hsl(220 10% 46%)" }}>Feature proposal · Getplace</p>
+              <h1 className="text-xl font-bold tracking-tight" style={{ color: "hsl(231 98% 61%)" }}>Country Explorer by Getplace.io</h1>
+              <p className="text-[10px]" style={{ color: "hsl(220 10% 46%)" }}>Great Britain - 6 brands · 5,718 locations · 9 regions
+              </p>
             </div>
           </div>
           <div className="text-right">
@@ -170,15 +171,14 @@ const OnePager = () => {
           body { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
         }
       `}</style>
-    </div>
-  );
+    </div>);
 };
 
-const Section = ({ title, children }: { title: string; children: React.ReactNode }) => (
-  <div className="rounded-xl p-3" style={{ background: "rgba(255,255,255,0.7)", border: "1px solid hsl(220 13% 91%)" }}>
+const Section = ({ title, children }: {title: string;children: React.ReactNode;}) =>
+<div className="rounded-xl p-3" style={{ background: "rgba(255,255,255,0.7)", border: "1px solid hsl(220 13% 91%)" }}>
     <h2 className="text-xs font-bold mb-1 uppercase tracking-wide" style={{ color: "hsl(231 98% 61%)" }}>{title}</h2>
     {children}
-  </div>
-);
+  </div>;
+
 
 export default OnePager;
