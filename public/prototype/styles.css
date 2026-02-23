@@ -198,6 +198,19 @@ body { font-family: var(--sans); background: var(--bg); color: var(--text); -web
 .leaflet-control-zoom { border: 1px solid var(--border) !important; border-radius: 8px !important; box-shadow: var(--shadow) !important; overflow: hidden; }
 .leaflet-control-zoom a { background: var(--panel) !important; color: var(--text) !important; border-color: var(--border) !important; width: 30px !important; height: 30px !important; line-height: 30px !important; font-size: 16px !important; }
 
+/* ── Face-off / Guesstimate Compare ── */
+.faceoff-grid { display: grid; grid-template-columns: 1fr auto 1fr; gap: 8px; align-items: stretch; margin: 10px 0; }
+.faceoff-card { background: var(--panel2); border: 1px solid var(--border); border-radius: 8px; padding: 12px; }
+.faceoff-brand { font-weight: 800; font-size: 14px; margin-bottom: 4px; }
+.faceoff-stat { font-size: 12px; color: var(--muted); margin-bottom: 2px; }
+.faceoff-metric { font-size: 11px; color: var(--muted); }
+.faceoff-wins { font-size: 12px; font-weight: 700; margin-top: 6px; }
+.faceoff-vs { display: flex; align-items: center; justify-content: center; font-weight: 900; font-size: 14px; color: var(--muted); letter-spacing: 1px; }
+.faceoff-strengths { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin: 10px 0; }
+.faceoff-section-title { font-size: 11px; font-weight: 800; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 6px; }
+.faceoff-row { display: flex; justify-content: space-between; font-size: 12px; padding: 3px 0; border-bottom: 1px solid var(--border); }
+.faceoff-lead { font-weight: 700; color: var(--accent); font-size: 11px; }
+
 .hidden { display: none !important; }
 
 @media (max-width: 900px) {
