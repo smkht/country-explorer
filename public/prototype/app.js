@@ -661,6 +661,20 @@ function hexStyleGuesstimate(props) {
     // Track max population for gradient on empty cells
     state._hexMaxPop = Math.max(1, ...hexGrid.features.map(h => h.properties.estPop || 0));
 
+    // Guesstimate + heatmap: compute opportunity per hex
+    const isGuessHeat = state.guesstimateMode;
+    if (isGuessHeat) {
+      const maxPopH = state._hexMaxPop;
+      const maxTotalH = Math.max(1, ...hexGrid.features.map(h => h.properties.adjustedTotal || 0));
+      hexGrid.features.forEach(hex => {
+        const pop = hex.properties.estPop || 0;
+        const adj = hex.properties.adjustedTotal || 0;
+        const popNorm = maxPopH > 0 ? pop / maxPopH : 0;
+        const storeNorm = maxTotalH > 0 ? adj / maxTotalH : 0;
+        hex.properties.opportunity = popNorm > 0 ? Math.min(1, popNorm * (1 - storeNorm * 0.7)) : 0;
+      });
+    }
+
     // Show ALL hexagons — empty ones get subtle population-based tint
     const allHexes = hexGrid.features;
 
@@ -668,20 +682,51 @@ function hexStyleGuesstimate(props) {
       style: f => {
         const p = f.properties;
         const maxPop = state._hexMaxPop || 1;
+        const opp = isGuessHeat ? (p.opportunity || 0) : 0;
+
         if (p.total === 0) {
           const pop = p.estPop || 0;
           const t = maxPop > 0 ? Math.min(1, pop / maxPop) : 0;
+          if (isGuessHeat && opp > 0.15) {
+            // Golden glow for empty opportunity cells
+            return {
+              fillColor: `hsla(${45 - 5 * opp}, ${55 + 35 * opp}%, ${90 - 32 * opp}%, ${0.12 + 0.5 * opp})`,
+              fillOpacity: 1,
+              weight: 2 + opp * 2,
+              color: `hsla(42, ${70 + 25 * opp}%, ${60 - 10 * opp}%, ${0.3 + 0.5 * opp})`,
+              opacity: 1
+            };
+          }
           return { fillColor: `hsla(40,${20 + 30 * t}%,${94 - 12 * t}%,${0.08 + 0.2 * t})`, fillOpacity: 1, weight: 1, color: `rgba(180,140,60,${0.06 + 0.15 * t})`, opacity: 1 };
         }
-        return { fillColor: hexFillHeatmap(p.ratio), fillOpacity: 1, weight: 1, color: hexStrokeHeatmap(p.ratio), opacity: 1 };
+
+        // Has stores — normal heatmap fill, but golden border glow if high opportunity
+        const base = { fillColor: hexFillHeatmap(p.ratio), fillOpacity: 1 };
+        if (isGuessHeat && opp > 0.3) {
+          base.weight = 2 + opp * 2;
+          base.color = `hsla(42, ${70 + 25 * opp}%, ${55 - 8 * opp}%, ${0.35 + 0.5 * opp})`;
+          base.opacity = 1;
+        } else {
+          base.weight = 1;
+          base.color = hexStrokeHeatmap(p.ratio);
+          base.opacity = 1;
+        }
+        return base;
       },
       onEachFeature: (feature, layer) => {
         const p = feature.properties;
+        const oppLine = isGuessHeat ? (() => {
+          const opp = p.opportunity || 0;
+          const oppPct = Math.round(opp * 100);
+          const label = oppPct >= 70 ? '🔥 High' : oppPct >= 40 ? '⚡ Moderate' : oppPct > 10 ? '📍 Low' : '';
+          return `<br>Opportunity: ${oppPct}% ${label}`;
+        })() : '';
+
         if (p.total === 0) {
           const pop = p.estPop || 0;
           const popK = pop > 1000 ? (pop / 1000).toFixed(1) + 'k' : pop;
           const unlocK = p.unlocated > 0.1 ? ` · +${p.unlocated.toFixed(1)} est. unlocated` : '';
-          layer.bindTooltip(`No stores${unlocK} · Pop: ~${popK}${pop > 0 ? ' — untapped area' : ''}`, { sticky: true });
+          layer.bindTooltip(`No stores${unlocK} · Pop: ~${popK}${pop > 0 ? ' — untapped area' : ''}${oppLine}`, { sticky: true });
           return;
         }
         const pctText = !isNaN(p.ratio) ? ` (${(p.ratio * 100).toFixed(0)}% ${state.primaryBrand})` : '';
@@ -691,7 +736,7 @@ function hexStyleGuesstimate(props) {
         const popK = pop > 1000 ? (pop / 1000).toFixed(1) + 'k' : pop;
         const unlocNote = p.unlocated > 0.1 ? `<br>+${p.unlocated.toFixed(1)} est. unlocated stores in area` : '';
         layer.bindTooltip(
-          `${state.primaryBrand}: ${p.primary} · Others: ${p.competitor}${pctText}<br>Pop: ~${popK} · 1 per ${popPer} people${unlocNote}`,
+          `${state.primaryBrand}: ${p.primary} · Others: ${p.competitor}${pctText}<br>Pop: ~${popK} · 1 per ${popPer} people${unlocNote}${oppLine}`,
           { sticky: true }
         );
       }
@@ -780,7 +825,16 @@ function hexStyleGuesstimate(props) {
 function updateLegend() {
   const title = document.getElementById("legendTitle");
   const scale = document.getElementById("legendScale");
-  if (state.heatmapMode) {
+  if (state.heatmapMode && state.guesstimateMode) {
+    title.textContent = `⚡ ${state.primaryBrand} · Opportunity`;
+    scale.innerHTML = `
+      <span class="legend-block" style="background:#E53935"></span>
+      <span class="legend-block" style="background:#FFEB3B"></span>
+      <span class="legend-block" style="background:#4CAF50"></span>
+      <span class="legend-block" style="border:2px solid hsla(42,85%,50%,0.8);background:transparent;box-shadow:0 0 6px hsla(42,90%,55%,0.6)"></span>
+      <span class="legend-block" style="border:3px solid hsla(38,90%,45%,0.9);background:hsla(45,80%,60%,0.3);box-shadow:0 0 8px hsla(40,95%,50%,0.7)"></span>
+    `;
+  } else if (state.heatmapMode) {
     title.textContent = `${state.primaryBrand} vs competitors`;
     scale.innerHTML = `
       <span class="legend-block" style="background:#E53935"></span>
