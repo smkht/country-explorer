@@ -20,7 +20,7 @@ const Explorer = () => {
               <MapPin className="w-3 h-3 text-primary-foreground" />
             </div>
             <span className="font-bold text-sm text-foreground tracking-tight">Country Explorer</span>
-            <span className="text-xs text-muted-foreground hidden sm:inline">· England</span>
+            <span className="text-xs text-muted-foreground hidden sm:inline">· Great Britain</span>
           </div>
         </div>
         <div className="flex items-center gap-3">
