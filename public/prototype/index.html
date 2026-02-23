@@ -1,0 +1,245 @@
+
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1"/>
+  <title>Country Explorer Prototype — England</title>
+  <link rel="stylesheet" href="styles.css"/>
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
+        integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin=""/>
+</head>
+<body>
+  <div class="header">
+    <div class="header-inner">
+      <div class="brand">
+        <div class="logo"></div>
+        <div>
+          <h1>Country Explorer <span class="badge"><span class="dot"></span> Prototype</span></h1>
+          <div class="sub">Getplace — Competitive landscape for restaurant brands · Country: <strong>England</strong> · Snapshot: <span id="snapshotDate">—</span></div>
+        </div>
+      </div>
+      <div class="nav">
+        <button class="active" data-tab="overview">Overview</button>
+        <button data-tab="compare">Brand compare</button>
+        <button data-tab="export">Export</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="container">
+    <!-- Left panel -->
+    <div class="panel" id="leftPanel">
+      <div class="title">
+        <h2>Filters & KPIs</h2>
+        <span class="badge" id="countryBadge"><span class="dot"></span> England</span>
+      </div>
+      <div class="content">
+        <div class="controls">
+          <label>Brands (toggle)</label>
+          <div class="chips" id="brandChips"></div>
+
+          <label>Map metric</label>
+          <select id="metricSelect">
+            <option value="count">Total locations</option>
+            <option value="density">Locations per 1,000 km²</option>
+          </select>
+
+          <label>Quick actions</label>
+          <div class="chips">
+            <div class="chip" id="clearRegion">Clear region selection</div>
+            <div class="chip" id="selectAllBrands">Select all brands</div>
+            <div class="chip" id="selectTop3Brands">Top 3 brands</div>
+          </div>
+
+          <div class="footer-note">
+            Tip: click a region on the map to drill down.<br/>
+            If the map doesn't load, open via a local server (see Export tab).
+          </div>
+        </div>
+
+        <div style="height:12px"></div>
+
+        <div class="kpi-grid">
+          <div class="kpi">
+            <div class="label">Locations (selected brands)</div>
+            <div class="value" id="kpiTotal">—</div>
+            <div class="hint" id="kpiTotalHint">Across England</div>
+          </div>
+          <div class="kpi">
+            <div class="label">Regions covered</div>
+            <div class="value" id="kpiRegions">—</div>
+            <div class="hint">ITL1 regions with ≥1 location</div>
+          </div>
+          <div class="kpi">
+            <div class="label">Most dense region</div>
+            <div class="value" id="kpiDense">—</div>
+            <div class="hint">By selected metric</div>
+          </div>
+          <div class="kpi">
+            <div class="label">London share</div>
+            <div class="value" id="kpiLondonShare">—</div>
+            <div class="hint">Selected brands only</div>
+          </div>
+        </div>
+
+        <div style="height:12px"></div>
+
+        <div class="callout" id="insightsBox">
+          <strong>Auto-insights (prototype)</strong><br/>
+          • Subway is the largest footprint across England in this dataset.<br/>
+          • Nando's is relatively London-heavy compared to other brands.<br/>
+          • Use Brand compare to quantify concentration & region skews.
+        </div>
+      </div>
+    </div>
+
+    <!-- Center map -->
+    <div class="panel">
+      <div class="title">
+        <h2>Map</h2>
+        <span class="badge" id="selectedRegionBadge"><span class="dot"></span> <span id="selectedRegionText">No region selected</span></span>
+      </div>
+      <div class="content map-wrap">
+        <div id="map"></div>
+      </div>
+    </div>
+
+    <!-- Right panel -->
+    <div class="panel" id="rightPanel">
+      <div class="title">
+        <h2 id="rightTitle">Region insights</h2>
+        <span class="badge" id="regionMetricBadge"><span class="dot"></span> <span id="regionMetricText">—</span></span>
+      </div>
+      <div class="content">
+        <div id="regionEmpty" class="small">
+          Select a region on the map to see breakdowns, top cities, and head-to-head comparisons.
+        </div>
+
+        <div id="regionDetails" class="hidden">
+          <div class="kpi-grid">
+            <div class="kpi">
+              <div class="label">Locations (selected)</div>
+              <div class="value" id="regionTotal">—</div>
+              <div class="hint">All selected brands</div>
+            </div>
+            <div class="kpi">
+              <div class="label">Top brand</div>
+              <div class="value" id="regionTopBrand">—</div>
+              <div class="hint" id="regionTopBrandHint">—</div>
+            </div>
+          </div>
+
+          <div style="height:12px"></div>
+
+          <div>
+            <div class="label" style="margin-bottom:6px;color:var(--muted);font-size:12px">Brand mix (counts)</div>
+            <table class="table" id="regionBrandTable"></table>
+          </div>
+
+          <div style="height:12px"></div>
+
+          <div>
+            <div class="label" style="margin-bottom:6px;color:var(--muted);font-size:12px">Top cities (selected brands)</div>
+            <table class="table" id="regionCityTable"></table>
+          </div>
+
+          <div style="height:12px"></div>
+
+          <div class="callout">
+            <strong>Later iterations</strong><br/>
+            Add openings/closures timeline, delivery zone overlap, pricing & ratings comparisons.
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Compare tab (same page, different layout) -->
+  <div class="container hidden" id="compareTab">
+    <div class="panel">
+      <div class="title"><h2>Brand compare</h2></div>
+      <div class="content">
+        <div class="small">
+          This view helps a chain's strategy team answer: “Where are we strong/weak vs competitors, and how concentrated is each brand?”
+        </div>
+        <div style="height:12px"></div>
+        <table class="table" id="compareTable"></table>
+        <div class="footer-note">
+          Note: prototype uses outlet counts only. In production, we'd add delivery coverage, openings/closures, ratings, price index, and platform visibility.
+        </div>
+      </div>
+    </div>
+
+    <div class="panel">
+      <div class="title"><h2>How to use</h2></div>
+      <div class="content">
+        <ol class="small" style="line-height:1.6">
+          <li>Pick brands to include (left panel in Overview).</li>
+          <li>Use the map to identify high-intensity regions.</li>
+          <li>Click a region to see brand mix + top cities.</li>
+          <li>Export filtered data as CSV (Export tab) for further analysis.</li>
+        </ol>
+        <div class="callout">
+          <strong>Example use case</strong><br/>
+          A pizza chain can compare Domino's vs Papa Johns region-by-region, find whitespace cities, then prioritize new store pipeline.
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Export tab -->
+  <div class="container hidden" id="exportTab">
+    <div class="panel">
+      <div class="title"><h2>Export</h2></div>
+      <div class="content">
+        <div class="callout">
+          <strong>Run locally</strong><br/>
+          Because browsers restrict reading local files, launch a tiny server in this folder:
+          <div style="margin-top:8px; font-family: var(--mono); font-size:12px; background: rgba(0,0,0,0.25); padding:10px; border-radius:12px; border:1px solid var(--border);">
+            python3 -m http.server 8000
+          </div>
+          Then open: <span style="font-family: var(--mono);">http://localhost:8000</span>
+        </div>
+
+        <div style="height:12px"></div>
+
+        <div class="small">
+          Export the currently selected brands (and optionally the selected region) as:
+        </div>
+
+        <div style="height:10px"></div>
+
+        <div class="chips">
+          <div class="chip" id="exportCsv">Download CSV</div>
+          <div class="chip" id="exportGeojson">Download GeoJSON</div>
+        </div>
+
+        <div class="footer-note">
+          In production: scheduled exports, shareable links, and API access for BI tools.
+        </div>
+      </div>
+    </div>
+
+    <div class="panel">
+      <div class="title"><h2>What gets exported (MVP)</h2></div>
+      <div class="content">
+        <ul class="small" style="line-height:1.6">
+          <li>Location id, brand, name</li>
+          <li>Address fields (city, postcode where available)</li>
+          <li>Coordinates</li>
+          <li>Region (ITL1)</li>
+        </ul>
+        <div class="callout">
+          <strong>Next</strong><br/>
+          Add “opened_at / closed_at”, platform presence, delivery zone polygons, and “in-app visibility snapshots” for longitudinal competitor tracking.
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
+          integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
+  <script src="app.js"></script>
+</body>
+</html>

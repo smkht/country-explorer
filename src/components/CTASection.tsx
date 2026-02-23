@@ -19,13 +19,13 @@ const CTASection = () => (
           Ready to see your market clearly?
         </h2>
         <p className="text-primary-foreground/80 text-lg mb-8 max-w-xl mx-auto leading-relaxed">
-          Book a 30-minute walkthrough and get a custom report for your country and competitor set.
+          Explore the interactive prototype — see coverage maps, brand comparisons, and exportable data for England.
         </p>
         <a
-          href="#"
+          href="/explorer"
           className="inline-flex items-center gap-2 rounded-full bg-primary-foreground text-primary px-8 py-3.5 text-base font-semibold hover:opacity-90 transition-opacity"
         >
-          Request a Demo
+          Try it for Free
           <ArrowRight className="w-4 h-4" />
         </a>
       </motion.div>

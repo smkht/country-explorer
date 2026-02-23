@@ -26,10 +26,10 @@ const Hero = () => (
         </p>
         <div className="flex flex-col sm:flex-row gap-4 justify-center">
           <a
-            href="#cta"
+            href="/explorer"
             className="rounded-full bg-primary text-primary-foreground px-8 py-3.5 text-base font-semibold hover:opacity-90 transition-opacity glow-shadow"
           >
-            Request a Demo
+            Try it for Free
           </a>
           <a
             href="#features"
