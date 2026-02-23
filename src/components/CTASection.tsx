@@ -13,13 +13,13 @@ const CTASection = () => (
       >
         <div className="inline-flex items-center gap-2 rounded-full bg-[hsl(0_0%_100%/0.15)] px-4 py-1.5 text-sm font-medium text-primary-foreground mb-6">
           <MapPin className="w-3.5 h-3.5" />
-          Country Explorer
+          Country Explorer for Restaurant Chains
         </div>
         <h2 className="text-3xl md:text-4xl font-bold text-primary-foreground mb-4 tracking-tight">
-          Ready to see your market clearly?
+          Ready to map your restaurant market?
         </h2>
         <p className="text-primary-foreground/80 text-lg mb-8 max-w-xl mx-auto leading-relaxed">
-          Explore the interactive prototype — see coverage maps, brand comparisons, and exportable data for England.
+          Explore the interactive prototype — see restaurant coverage maps, chain comparisons, and exportable data for England.
         </p>
         <a
           href="/explorer"

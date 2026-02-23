@@ -15,14 +15,14 @@ const Hero = () => (
       >
         <div className="inline-flex items-center gap-2 rounded-full bg-accent px-4 py-1.5 text-sm font-medium text-accent-foreground mb-6">
           <MapPin className="w-3.5 h-3.5" />
-          Country Explorer
+          Country Explorer for Restaurant Chains
         </div>
         <h1 className="text-4xl md:text-6xl font-bold text-foreground leading-tight tracking-tight mb-6">
-          See the competitive landscape in any country{" "}
+          Map your restaurant competitors{" "}
           <span className="text-gradient">in minutes</span>
         </h1>
         <p className="text-lg md:text-xl text-muted-foreground leading-relaxed max-w-2xl mx-auto mb-8">
-          Explore where key brands operate, how concentrated they are, and where the whitespace is — all from a single, living dashboard.
+          See where rival restaurant chains operate, how concentrated they are, and where the whitespace is — all from a single, living dashboard built for QSR and fast-casual brands.
         </p>
         <div className="flex flex-col sm:flex-row gap-4 justify-center">
           <a

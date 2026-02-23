@@ -4,21 +4,21 @@ import { Target, CalendarCheck, Handshake } from "lucide-react";
 const useCases = [
   {
     icon: Target,
-    title: "Market Entry Planning",
+    title: "Restaurant Expansion Planning",
     description:
-      "Rank regions and cities by competitor intensity. Identify whitespace — areas with low competitor density but high potential.",
+      "Rank regions and cities by competitor restaurant density. Identify whitespace — areas with low chain presence but high potential for your next restaurant opening.",
   },
   {
     icon: CalendarCheck,
     title: "Quarterly Competitor Review",
     description:
-      "Track openings and closures by region. Get alerted when a competitor starts expanding into your priority markets.",
+      "Track restaurant openings and closures by region. Get alerted when a rival chain starts expanding into your priority markets.",
   },
   {
     icon: Handshake,
-    title: "Head-to-Head Benchmarking",
+    title: "Head-to-Head Chain Benchmarking",
     description:
-      "Compare your brand vs competitors across regions with a consistent scorecard. Surface concentration patterns instantly.",
+      "Compare your restaurant brand vs competitors across regions with a consistent scorecard. Surface concentration patterns and delivery zone overlaps instantly.",
   },
 ];
 
@@ -33,10 +33,10 @@ const UseCasesSection = () => (
         className="text-center max-w-2xl mx-auto mb-14"
       >
         <h2 className="text-3xl md:text-4xl font-bold text-foreground mb-4 tracking-tight">
-          Built for competitive intelligence teams
+          Built for restaurant intelligence teams
         </h2>
         <p className="text-muted-foreground text-lg">
-          From expansion planning to board-ready reports — Country Explorer fits your workflow.
+          From expansion planning to board-ready reports — Country Explorer fits the workflow of QSR and fast-casual strategy teams.
         </p>
       </motion.div>
 
