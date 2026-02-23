@@ -1,5 +1,5 @@
 import { motion } from "framer-motion";
-import { Globe, MapPin } from "lucide-react";
+import { MapPin } from "lucide-react";
 
 const stats = [
   { value: "5,718", label: "Restaurant locations", sub: "England snapshot" },
@@ -49,8 +49,32 @@ const StatsSection = () => (
         <h2 className="text-3xl md:text-4xl font-bold text-foreground mb-4 tracking-tight">
           Real restaurant data, real insights
         </h2>
-        <p className="text-muted-foreground text-lg">
+        <p className="text-muted-foreground text-lg mb-6">
           A snapshot from our England restaurant dataset — the kind of intelligence you'll have for any country.
+        </p>
+        <div className="flex flex-wrap items-center justify-center gap-2">
+          {countries.map((c, i) => (
+            <span
+              key={i}
+              className={`inline-flex items-center gap-1.5 text-sm font-medium px-3 py-1.5 rounded-full border ${
+                c.status === "live"
+                  ? "bg-accent text-primary border-primary/20"
+                  : "bg-muted text-muted-foreground border-border"
+              }`}
+            >
+              {c.status === "live" && (
+                <span className="w-1.5 h-1.5 rounded-full bg-primary animate-pulse" />
+              )}
+              {c.name}
+              {c.status === "coming" && <span className="text-xs opacity-60">· Soon</span>}
+            </span>
+          ))}
+        </div>
+        <p className="text-xs text-muted-foreground mt-3">
+          More EU countries rolling out quarterly.{" "}
+          <a href="https://calendly.com/denis_getplace/30min" target="_blank" rel="noopener noreferrer" className="text-primary hover:underline">
+            Request a country →
+          </a>
         </p>
       </motion.div>
 
@@ -73,46 +97,7 @@ const StatsSection = () => (
       </div>
 
       {/* Countries & Brands grid */}
-      <div className="grid md:grid-cols-2 gap-6 max-w-4xl mx-auto mb-10">
-        {/* Countries */}
-        <motion.div
-          initial={{ opacity: 0, y: 20 }}
-          whileInView={{ opacity: 1, y: 0 }}
-          viewport={{ once: true }}
-          transition={{ duration: 0.6 }}
-          className="bg-card rounded-2xl border border-border overflow-hidden"
-        >
-          <div className="px-6 py-4 border-b border-border flex items-center gap-2">
-            <Globe className="w-4 h-4 text-primary" />
-            <h3 className="font-semibold text-foreground">Countries We Cover</h3>
-          </div>
-          <div className="p-6">
-            <div className="space-y-3">
-              {countries.map((c, i) => (
-                <div key={i} className="flex items-center justify-between">
-                  <span className="text-foreground font-medium">{c.name}</span>
-                  {c.status === "live" ? (
-                    <span className="inline-flex items-center gap-1.5 text-xs font-medium text-primary bg-accent px-2.5 py-1 rounded-full">
-                      <span className="w-1.5 h-1.5 rounded-full bg-primary animate-pulse" />
-                      Live — {c.brands} chains, {c.locations} locations
-                    </span>
-                  ) : (
-                    <span className="text-xs text-muted-foreground bg-muted px-2.5 py-1 rounded-full">
-                      Coming soon
-                    </span>
-                  )}
-                </div>
-              ))}
-            </div>
-            <p className="text-xs text-muted-foreground mt-4">
-              More EU countries rolling out quarterly. Request a country →{" "}
-              <a href="https://calendly.com/denis_getplace/30min" target="_blank" rel="noopener noreferrer" className="text-primary hover:underline">
-                Book a call
-              </a>
-            </p>
-          </div>
-        </motion.div>
-
+      <div className="max-w-4xl mx-auto mb-10">
         {/* Brands tracked */}
         <motion.div
           initial={{ opacity: 0, y: 20 }}
