@@ -1,4 +1,5 @@
 import { motion } from "framer-motion";
+import { Globe, MapPin } from "lucide-react";
 
 const stats = [
   { value: "5,718", label: "Restaurant locations", sub: "England snapshot" },
@@ -14,6 +15,25 @@ const brands = [
   { name: "KFC", locations: "857", share: "15.0%" },
   { name: "Nando's", locations: "423", share: "7.4%" },
   { name: "Papa Johns", locations: "372", share: "6.5%" },
+];
+
+const countries = [
+  { name: "England", status: "live", brands: 6, locations: "5,718" },
+  { name: "Germany", status: "coming", brands: null, locations: null },
+  { name: "France", status: "coming", brands: null, locations: null },
+  { name: "Spain", status: "coming", brands: null, locations: null },
+  { name: "Italy", status: "coming", brands: null, locations: null },
+  { name: "Netherlands", status: "coming", brands: null, locations: null },
+  { name: "Poland", status: "coming", brands: null, locations: null },
+];
+
+const londonBrands = [
+  { name: "Subway", locations: 216, share: "23.6%", density: "137.1" },
+  { name: "McDonald's", locations: 192, share: "21.0%", density: "121.9" },
+  { name: "KFC", locations: 161, share: "17.6%", density: "102.2" },
+  { name: "Domino's", locations: 151, share: "16.5%", density: "95.9" },
+  { name: "Nando's", locations: 127, share: "13.9%", density: "80.7" },
+  { name: "Papa Johns", locations: 67, share: "7.3%", density: "42.5" },
 ];
 
 const StatsSection = () => (
@@ -52,31 +72,123 @@ const StatsSection = () => (
         ))}
       </div>
 
-      {/* Brand table */}
+      {/* Countries & Brands grid */}
+      <div className="grid md:grid-cols-2 gap-6 max-w-4xl mx-auto mb-10">
+        {/* Countries */}
+        <motion.div
+          initial={{ opacity: 0, y: 20 }}
+          whileInView={{ opacity: 1, y: 0 }}
+          viewport={{ once: true }}
+          transition={{ duration: 0.6 }}
+          className="bg-card rounded-2xl border border-border overflow-hidden"
+        >
+          <div className="px-6 py-4 border-b border-border flex items-center gap-2">
+            <Globe className="w-4 h-4 text-primary" />
+            <h3 className="font-semibold text-foreground">Countries We Cover</h3>
+          </div>
+          <div className="p-6">
+            <div className="space-y-3">
+              {countries.map((c, i) => (
+                <div key={i} className="flex items-center justify-between">
+                  <span className="text-foreground font-medium">{c.name}</span>
+                  {c.status === "live" ? (
+                    <span className="inline-flex items-center gap-1.5 text-xs font-medium text-primary bg-accent px-2.5 py-1 rounded-full">
+                      <span className="w-1.5 h-1.5 rounded-full bg-primary animate-pulse" />
+                      Live — {c.brands} chains, {c.locations} locations
+                    </span>
+                  ) : (
+                    <span className="text-xs text-muted-foreground bg-muted px-2.5 py-1 rounded-full">
+                      Coming soon
+                    </span>
+                  )}
+                </div>
+              ))}
+            </div>
+            <p className="text-xs text-muted-foreground mt-4">
+              More EU countries rolling out quarterly. Request a country →{" "}
+              <a href="https://calendly.com/denis_getplace/30min" target="_blank" rel="noopener noreferrer" className="text-primary hover:underline">
+                Book a call
+              </a>
+            </p>
+          </div>
+        </motion.div>
+
+        {/* Brands tracked */}
+        <motion.div
+          initial={{ opacity: 0, y: 20 }}
+          whileInView={{ opacity: 1, y: 0 }}
+          viewport={{ once: true }}
+          transition={{ duration: 0.6, delay: 0.1 }}
+          className="bg-card rounded-2xl border border-border overflow-hidden"
+        >
+          <div className="px-6 py-4 border-b border-border">
+            <h3 className="font-semibold text-foreground">England — Restaurant Chains Tracked</h3>
+          </div>
+          <table className="w-full">
+            <thead>
+              <tr className="border-b border-border text-sm text-muted-foreground">
+                <th className="px-6 py-3 text-left font-medium">Chain</th>
+                <th className="px-6 py-3 text-right font-medium">Locations</th>
+                <th className="px-6 py-3 text-right font-medium">Share</th>
+              </tr>
+            </thead>
+            <tbody>
+              {brands.map((b, i) => (
+                <tr key={i} className="border-b border-border last:border-0 hover:bg-muted/50 transition-colors">
+                  <td className="px-6 py-3 text-foreground font-medium">{b.name}</td>
+                  <td className="px-6 py-3 text-right text-foreground tabular-nums">{b.locations}</td>
+                  <td className="px-6 py-3 text-right text-muted-foreground tabular-nums">{b.share}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </motion.div>
+      </div>
+
+      {/* London deep-dive */}
       <motion.div
         initial={{ opacity: 0, y: 20 }}
         whileInView={{ opacity: 1, y: 0 }}
         viewport={{ once: true }}
         transition={{ duration: 0.6 }}
-        className="max-w-2xl mx-auto bg-card rounded-2xl border border-border overflow-hidden"
+        className="max-w-4xl mx-auto bg-card rounded-2xl border border-border overflow-hidden"
       >
-        <div className="px-6 py-4 border-b border-border">
-          <h3 className="font-semibold text-foreground">England — Restaurant Locations by Chain</h3>
+        <div className="px-6 py-4 border-b border-border flex items-center gap-2">
+          <MapPin className="w-4 h-4 text-primary" />
+          <h3 className="font-semibold text-foreground">London — Restaurant Chain Density Breakdown</h3>
+        </div>
+        <div className="px-6 py-4 border-b border-border bg-muted/30">
+          <div className="grid grid-cols-3 gap-6 text-center">
+            <div>
+              <div className="text-2xl font-bold text-foreground">914</div>
+              <div className="text-xs text-muted-foreground">Total Locations</div>
+            </div>
+            <div>
+              <div className="text-2xl font-bold text-foreground">580.9</div>
+              <div className="text-xs text-muted-foreground">Per 1,000 km²</div>
+            </div>
+            <div>
+              <div className="text-2xl font-bold text-foreground">16.0%</div>
+              <div className="text-xs text-muted-foreground">of England Total</div>
+            </div>
+          </div>
         </div>
         <table className="w-full">
           <thead>
             <tr className="border-b border-border text-sm text-muted-foreground">
-              <th className="px-6 py-3 text-left font-medium">Brand</th>
+              <th className="px-6 py-3 text-left font-medium">Chain</th>
               <th className="px-6 py-3 text-right font-medium">Locations</th>
               <th className="px-6 py-3 text-right font-medium">Share</th>
+              <th className="px-6 py-3 text-right font-medium hidden sm:table-cell">Per 1k km²</th>
             </tr>
           </thead>
           <tbody>
-            {brands.map((b, i) => (
+            {londonBrands.map((b, i) => (
               <tr key={i} className="border-b border-border last:border-0 hover:bg-muted/50 transition-colors">
                 <td className="px-6 py-3 text-foreground font-medium">{b.name}</td>
                 <td className="px-6 py-3 text-right text-foreground tabular-nums">{b.locations}</td>
                 <td className="px-6 py-3 text-right text-muted-foreground tabular-nums">{b.share}</td>
+                <td className="px-6 py-3 text-right text-muted-foreground tabular-nums hidden sm:table-cell">{b.density}</td>
               </tr>
             ))}
           </tbody>
