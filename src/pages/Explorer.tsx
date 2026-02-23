@@ -25,12 +25,14 @@ const Explorer = () => {
         </div>
         <div className="flex items-center gap-3">
           <span className="text-xs text-muted-foreground hidden md:inline">Interactive Prototype</span>
-          <Link
-            to="/"
+          <a
+            href="https://calendly.com/denis_getplace/30min"
+            target="_blank"
+            rel="noopener noreferrer"
             className="rounded-full bg-primary text-primary-foreground px-4 py-1.5 text-xs font-medium hover:opacity-90 transition-opacity"
           >
             Get Full Access
-          </Link>
+          </a>
         </div>
       </div>
       <iframe
