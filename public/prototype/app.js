@@ -1117,13 +1117,11 @@ function generateGuesstimateData() {
   const areas = state.metrics.region_area_km2;
   const allBrands = state.metrics.brands;
 
-  // Determine which brand we're analysing and who are competitors
   const focusBrand = isHeatmap ? primary : (selected.length === 1 ? selected[0] : null);
   const competitors = focusBrand
     ? allBrands.filter(b => b !== focusBrand && (isHeatmap || selected.includes(b)))
     : [];
 
-  // ── Per-region real numbers ──
   const regionData = regions.map(r => {
     const counts = brandCounts[r] || {};
     const area = areas[r] || 1;
@@ -1131,79 +1129,107 @@ function generateGuesstimateData() {
     const compCount = competitors.reduce((s, b) => s + (counts[b] || 0), 0);
     const totalSelected = selected.reduce((s, b) => s + (counts[b] || 0), 0);
     const allCount = allBrands.reduce((s, b) => s + (counts[b] || 0), 0);
-    const density = totalSelected / (area / 1000);
+    const density = allCount / (area / 1000);
+    const densitySelected = totalSelected / (area / 1000);
     const focusShare = allCount > 0 ? focusCount / allCount : 0;
     const compShare = allCount > 0 ? compCount / allCount : 0;
-    return { region: r, label: r.replace(" (England)", ""), area, focusCount, compCount, totalSelected, allCount, density, focusShare, compShare };
+    return { region: r, label: r.replace(" (England)", ""), area, focusCount, compCount, totalSelected, allCount, density, densitySelected, focusShare, compShare };
   });
 
-  // ── Market saturation (based on density vs London benchmark) ──
   const londonDensity = regionData.find(r => r.region === "London")?.density || 1;
   const avgDensity = regionData.reduce((s, r) => s + r.density, 0) / regionData.length;
   const saturation = Math.min(99, Math.round((avgDensity / londonDensity) * 100));
 
-  // ── Focus brand totals ──
   const focusTotal = focusBrand ? (state.metrics.brand_totals[focusBrand] || 0) : 0;
   const totalAll = allBrands.reduce((s, b) => s + (state.metrics.brand_totals[b] || 0), 0);
   const nationalShare = totalAll > 0 ? focusTotal / totalAll : 0;
 
-  // ── Regional opportunity: regions where focus brand is underrepresented vs market avg ──
   const avgShare = focusBrand ? focusTotal / totalAll : 0;
   const regionInsights = regionData.map(r => {
-    // Opportunity = how much room to grow. High when focus brand share is below its national avg
     const gapVsAvg = avgShare > 0 ? Math.max(0, 1 - (r.focusShare / avgShare)) : 0;
-    // Also factor in overall density — low density = more room
     const densityFactor = Math.max(0, 1 - (r.density / londonDensity));
-    const opportunity = Math.round(Math.min(100, (gapVsAvg * 60 + densityFactor * 40)));
-    const advice = r.focusShare < avgShare * 0.7
-      ? `Under-penetrated: ${focusBrand || 'You'} hold${fmtPct(r.focusShare)} vs ${fmtPct(avgShare)} national avg`
-      : r.focusShare > avgShare * 1.3
-        ? `Strong position: ${fmtPct(r.focusShare)} share, defend & optimise`
-        : `Balanced: close to national average share`;
+    const opportunity = focusBrand
+      ? Math.round(Math.min(100, (gapVsAvg * 60 + densityFactor * 40)))
+      : Math.round(Math.min(100, densityFactor * 100));
+    const advice = focusBrand
+      ? (r.focusShare < avgShare * 0.7
+        ? `Under-penetrated: ${focusBrand} holds ${fmtPct(r.focusShare)} vs ${fmtPct(avgShare)} national avg`
+        : r.focusShare > avgShare * 1.3
+          ? `Strong position: ${fmtPct(r.focusShare)} share, defend & optimise`
+          : `Balanced: close to national average share`)
+      : (r.density < avgDensity * 0.6
+        ? `Low saturation (${r.density.toFixed(1)}/1k km²) — strong entry opportunity`
+        : r.density > avgDensity * 1.5
+          ? `Highly saturated (${r.density.toFixed(1)}/1k km²) — competitive, harder entry`
+          : `Moderate saturation (${r.density.toFixed(1)}/1k km²) — viable with differentiation`);
     return { ...r, opportunity, advice };
   }).sort((a, b) => b.opportunity - a.opportunity);
 
-  // ── Whitespace: cities where focus brand has fewest locations vs competitors ──
+  // Whitespace cities
   const cityData = {};
   state.locationsGeojson.features.forEach(f => {
     const p = f.properties;
     const city = (p.city || "").trim();
     if (!city || city === "Unknown") return;
     if (region && p.region !== region) return;
-    if (!cityData[city]) cityData[city] = { total: 0, focus: 0, comp: 0, brands: {} };
+    if (!cityData[city]) cityData[city] = { total: 0, focus: 0, comp: 0, brands: {}, region: p.region };
     cityData[city].total++;
     if (p.brand === focusBrand) cityData[city].focus++;
     if (competitors.includes(p.brand)) cityData[city].comp++;
     cityData[city].brands[p.brand] = (cityData[city].brands[p.brand] || 0) + 1;
   });
 
-  const whitespace = Object.entries(cityData)
-    .filter(([, d]) => d.total >= 5) // Only cities with meaningful presence
-    .map(([city, d]) => {
-      // Score: high when competitors are there but focus brand is missing/weak
-      const compPresent = d.comp;
-      const focusPresent = d.focus;
-      const ratio = d.total > 0 ? focusPresent / d.total : 0;
-      const score = Math.round(Math.min(99, Math.max(5, (1 - ratio) * 70 + (compPresent > focusPresent * 2 ? 25 : 10))));
-      const topComp = Object.entries(d.brands)
-        .filter(([b]) => b !== focusBrand)
-        .sort((a, b) => b[1] - a[1])[0];
-      const reason = focusPresent === 0
-        ? `No ${focusBrand || 'your'} stores — ${topComp ? topComp[0] + ' has ' + topComp[1] : 'competitors active'}`
-        : `Only ${focusPresent} store${focusPresent > 1 ? 's' : ''} vs ${compPresent} competitors — ${topComp ? topComp[0] + ' leads with ' + topComp[1] : 'gap exists'}`;
-      return { city, score, reason, focus: focusPresent, comp: compPresent, total: d.total };
-    })
-    .sort((a, b) => b.score - a.score)
-    .slice(0, 8);
+  let whitespace;
+  if (focusBrand) {
+    whitespace = Object.entries(cityData)
+      .filter(([, d]) => d.total >= 5)
+      .map(([city, d]) => {
+        const ratio = d.total > 0 ? d.focus / d.total : 0;
+        const score = Math.round(Math.min(99, Math.max(5, (1 - ratio) * 70 + (d.comp > d.focus * 2 ? 25 : 10))));
+        const topComp = Object.entries(d.brands).filter(([b]) => b !== focusBrand).sort((a, b) => b[1] - a[1])[0];
+        const reason = d.focus === 0
+          ? `No ${focusBrand} stores — ${topComp ? topComp[0] + ' has ' + topComp[1] : 'competitors active'}`
+          : `Only ${d.focus} store${d.focus > 1 ? 's' : ''} vs ${d.comp} competitors — ${topComp ? topComp[0] + ' leads with ' + topComp[1] : 'gap exists'}`;
+        return { city, score, reason, focus: d.focus, comp: d.comp, total: d.total };
+      })
+      .sort((a, b) => b.score - a.score).slice(0, 8);
+  } else {
+    // Market entrant mode: cities with fewest brands or lowest density
+    whitespace = Object.entries(cityData)
+      .filter(([, d]) => d.total >= 3)
+      .map(([city, d]) => {
+        const brandCount = Object.keys(d.brands).length;
+        const dominant = Object.entries(d.brands).sort((a, b) => b[1] - a[1])[0];
+        const dominantShare = dominant ? dominant[1] / d.total : 0;
+        const diversityGap = Math.max(0, allBrands.length - brandCount) / allBrands.length;
+        const score = Math.round(Math.min(99, Math.max(5, diversityGap * 60 + (1 - dominantShare) * 40)));
+        const reason = brandCount < allBrands.length
+          ? `Only ${brandCount}/${allBrands.length} chains present — ${dominant[0]} leads (${dominant[1]} stores)`
+          : `All chains present but ${dominant[0]} dominates (${fmtPct(dominantShare)})`;
+        return { city, score, reason, focus: brandCount, comp: d.total, total: d.total, dominantShare };
+      })
+      .sort((a, b) => b.score - a.score).slice(0, 10);
+  }
 
-  // ── Heatmap-aware competitive summary ──
-  const strongRegions = regionInsights.filter(r => r.focusShare >= avgShare).sort((a, b) => b.focusShare - a.focusShare);
-  const weakRegions = regionInsights.filter(r => r.focusShare < avgShare).sort((a, b) => a.focusShare - b.focusShare);
+  const strongRegions = regionInsights.filter(r => focusBrand ? r.focusShare >= avgShare : r.density >= avgDensity).sort((a, b) => focusBrand ? b.focusShare - a.focusShare : b.density - a.density);
+  const weakRegions = regionInsights.filter(r => focusBrand ? r.focusShare < avgShare : r.density < avgDensity).sort((a, b) => focusBrand ? a.focusShare - b.focusShare : a.density - b.density);
+
+  // Market entrant extras
+  let entrantData = null;
+  if (!focusBrand) {
+    const brandTotals = allBrands.map(b => ({ brand: b, total: state.metrics.brand_totals[b] || 0, share: (state.metrics.brand_totals[b] || 0) / totalAll })).sort((a, b) => b.total - a.total);
+    const hhi = Math.round(brandTotals.reduce((s, b) => s + Math.pow(b.share * 100, 2), 0));
+    const hhiLabel = hhi > 2500 ? 'Highly Concentrated' : hhi > 1500 ? 'Moderately Concentrated' : 'Competitive';
+    const avgStoresPerBrand = Math.round(totalAll / allBrands.length);
+    const underserved = [...regionData].sort((a, b) => a.density - b.density).slice(0, 3);
+    const mostCompetitive = [...regionData].sort((a, b) => b.density - a.density).slice(0, 3);
+    entrantData = { brandTotals, hhi, hhiLabel, avgStoresPerBrand, underserved, mostCompetitive };
+  }
 
   return {
     focusBrand, saturation, nationalShare, focusTotal, totalAll,
     regionInsights, whitespace, strongRegions, weakRegions, regionLabel,
-    isHeatmap, competitors
+    isHeatmap, competitors, entrantData, regionData, avgDensity, londonDensity
   };
 }
 
@@ -1215,86 +1241,181 @@ function refreshGuesstimate() {
   const d = generateGuesstimateData();
   const brandLabel = d.focusBrand || "Selected Brands";
   const hasHeatmap = d.isHeatmap && d.focusBrand;
+  const isEntrant = !d.focusBrand;
 
-  panel.innerHTML = `
-    <div class="guesstimate-badge">⚡ Guesstimate · Based on Real Store Data${hasHeatmap ? ' + Heatmap' : ''}</div>
+  let html = '';
 
-    ${d.focusBrand ? `
-    <div class="rp-kpi-grid" style="margin-bottom:12px">
-      <div class="rp-kpi-card"><div class="rp-kpi-value">${fmtInt(d.focusTotal)}</div><div class="rp-kpi-label">${brandLabel} Stores</div></div>
-      <div class="rp-kpi-card"><div class="rp-kpi-value">${fmtPct(d.nationalShare)}</div><div class="rp-kpi-label">National Share</div></div>
-      <div class="rp-kpi-card"><div class="rp-kpi-value">${d.saturation}%</div><div class="rp-kpi-label">Market Saturation</div></div>
-      <div class="rp-kpi-card"><div class="rp-kpi-value">${fmtInt(d.totalAll)}</div><div class="rp-kpi-label">Total Market</div></div>
-    </div>
-    ` : `
-    <div class="guesstimate-tip">💡 Turn on <strong>Heatmap Mode</strong> and pick a primary brand for competitor-specific insights</div>
-    `}
+  if (isEntrant) {
+    const e = d.entrantData;
+    html = `
+      <div class="guesstimate-badge">⚡ Market Entry Analysis · New Competitor Intelligence</div>
 
-    ${hasHeatmap ? `
-    <div class="rp-table-section">
-      <div class="rp-table-title">💪 Strongest Regions for ${brandLabel}</div>
-      <table class="table">
-        <tr><th>Region</th><th class="num">${brandLabel}</th><th class="num">Competitors</th><th class="num">Share</th></tr>
-        ${d.strongRegions.slice(0, 4).map(r => `<tr>
-          <td>${r.label}</td>
-          <td class="num" style="color:#43A047;font-weight:700">${fmtInt(r.focusCount)}</td>
-          <td class="num">${fmtInt(r.compCount)}</td>
-          <td class="num"><strong>${fmtPct(r.focusShare)}</strong></td>
-        </tr>`).join("")}
-      </table>
-    </div>
+      <div class="rp-kpi-grid" style="margin-bottom:12px">
+        <div class="rp-kpi-card"><div class="rp-kpi-value">${fmtInt(d.totalAll)}</div><div class="rp-kpi-label">Total Market Size</div></div>
+        <div class="rp-kpi-card"><div class="rp-kpi-value">${e.brandTotals.length}</div><div class="rp-kpi-label">Active Chains</div></div>
+        <div class="rp-kpi-card"><div class="rp-kpi-value">${d.saturation}%</div><div class="rp-kpi-label">Market Saturation</div></div>
+        <div class="rp-kpi-card"><div class="rp-kpi-value">${fmtInt(e.avgStoresPerBrand)}</div><div class="rp-kpi-label">Avg per Chain</div></div>
+      </div>
 
-    <div class="rp-table-section">
-      <div class="rp-table-title">⚠️ Weakest Regions — Growth Targets</div>
-      <table class="table">
-        <tr><th>Region</th><th class="num">${brandLabel}</th><th class="num">Gap vs Avg</th><th>Advice</th></tr>
-        ${d.weakRegions.slice(0, 4).map(r => {
-          const gap = d.nationalShare > 0 ? Math.round((1 - r.focusShare / d.nationalShare) * 100) : 0;
-          return `<tr>
-            <td>${r.label}</td>
-            <td class="num" style="color:#E53935;font-weight:700">${fmtInt(r.focusCount)}</td>
-            <td class="num"><span class="opp-score low">-${gap}%</span></td>
+      <div class="rp-table-section">
+        <div class="rp-table-title">📊 Market Concentration</div>
+        <div style="display:flex;align-items:center;gap:10px;margin-bottom:8px;padding:8px 10px;background:var(--panel2);border-radius:8px;border:1px solid var(--border)">
+          <div style="font-size:22px;font-weight:800;color:var(--text)">${e.hhi}</div>
+          <div>
+            <div style="font-size:12px;font-weight:700;color:${e.hhi > 2500 ? '#E53935' : e.hhi > 1500 ? '#FF9800' : '#43A047'}">${e.hhiLabel}</div>
+            <div style="font-size:10px;color:var(--muted)">HHI Index (0–10,000)</div>
+          </div>
+        </div>
+        <table class="table">
+          <tr><th>#</th><th>Chain</th><th class="num">Stores</th><th class="num">Share</th><th>Position</th></tr>
+          ${e.brandTotals.map((b, i) => `<tr>
+            <td style="color:var(--muted);font-weight:700">${i + 1}</td>
+            <td><div class="brand-dot-cell"><span class="brand-dot" style="background:${BRAND_COLORS[b.brand]||'#3B5BFE'};width:8px;height:8px"></span><strong>${b.brand}</strong></div></td>
+            <td class="num">${fmtInt(b.total)}</td>
+            <td class="num">${fmtPct(b.share)}</td>
+            <td style="font-size:10px;color:var(--muted)">${i === 0 ? '👑 Market leader' : i < 3 ? '⚡ Major player' : '📍 Challenger'}</td>
+          </tr>`).join("")}
+        </table>
+      </div>
+
+      <div class="rp-table-section">
+        <div class="rp-table-title">🟢 Best Regions for Market Entry</div>
+        <p style="font-size:11px;color:var(--muted);margin-bottom:6px;line-height:1.4">Regions with the lowest competitive density — most room for a new entrant.</p>
+        <table class="table">
+          <tr><th>Region</th><th class="num">Stores</th><th class="num">Density</th><th class="num">Opportunity</th><th>Assessment</th></tr>
+          ${d.regionInsights.slice(0, 5).map(r => `<tr>
+            <td><strong>${r.label}</strong></td>
+            <td class="num">${fmtInt(r.allCount)}</td>
+            <td class="num">${r.density.toFixed(1)}</td>
+            <td class="num">
+              <div class="opp-bar-wrap">
+                <div class="opp-bar" style="width:${r.opportunity}%;background:${r.opportunity > 65 ? '#43A047' : r.opportunity > 35 ? '#FF9800' : '#E53935'}"></div>
+                <span>${r.opportunity}%</span>
+              </div>
+            </td>
             <td style="font-size:10px;color:var(--muted)">${r.advice}</td>
-          </tr>`;
-        }).join("")}
-      </table>
-    </div>
-    ` : ''}
+          </tr>`).join("")}
+        </table>
+      </div>
 
-    <div class="rp-table-section">
-      <div class="rp-table-title">🎯 Whitespace — Where to Expand${d.focusBrand ? ` ${brandLabel}` : ''}</div>
-      ${d.whitespace.length > 0 ? `
-      <table class="table">
-        <tr><th>City</th><th class="num">You</th><th class="num">Comp.</th><th class="num">Score</th><th>Why</th></tr>
-        ${d.whitespace.map(w => `<tr>
-          <td><strong>${w.city}</strong></td>
-          <td class="num">${w.focus}</td>
-          <td class="num">${w.comp}</td>
-          <td class="num"><span class="opp-score ${w.score >= 75 ? 'high' : w.score >= 50 ? 'med' : 'low'}">${w.score}</span></td>
-          <td style="font-size:10px;color:var(--muted)">${w.reason}</td>
-        </tr>`).join("")}
-      </table>
-      ` : `<div class="rp-empty">Select a region or enable heatmap for whitespace analysis</div>`}
-    </div>
+      <div class="rp-table-section">
+        <div class="rp-table-title">🔴 Most Saturated Regions</div>
+        <p style="font-size:11px;color:var(--muted);margin-bottom:6px;line-height:1.4">Avoid unless you have a strong differentiator. Established chains dominate here.</p>
+        <table class="table">
+          <tr><th>Region</th><th class="num">Stores</th><th class="num">Density</th><th>Warning</th></tr>
+          ${e.mostCompetitive.map(r => `<tr>
+            <td><strong>${r.label}</strong></td>
+            <td class="num">${fmtInt(r.allCount)}</td>
+            <td class="num" style="color:#E53935;font-weight:700">${r.density.toFixed(1)}</td>
+            <td style="font-size:10px;color:var(--muted)">${r.density > d.avgDensity * 2 ? 'Extremely competitive — high barrier' : 'Above-average competition'}</td>
+          </tr>`).join("")}
+        </table>
+      </div>
 
-    <div class="rp-table-section">
-      <div class="rp-table-title">🗺️ Regional Opportunity Index</div>
-      <table class="table">
-        <tr><th>Region</th><th class="num">Stores</th><th class="num">Density</th><th class="num">Opportunity</th></tr>
-        ${d.regionInsights.map(r => `<tr>
-          <td>${r.label}</td>
-          <td class="num">${fmtInt(r.totalSelected)}</td>
-          <td class="num">${r.density.toFixed(1)}</td>
-          <td class="num">
-            <div class="opp-bar-wrap">
-              <div class="opp-bar" style="width:${r.opportunity}%;background:${r.opportunity > 65 ? '#43A047' : r.opportunity > 35 ? '#FF9800' : '#E53935'}"></div>
-              <span>${r.opportunity}%</span>
-            </div>
-          </td>
-        </tr>`).join("")}
-      </table>
-    </div>
-  `;
+      <div class="rp-table-section">
+        <div class="rp-table-title">🏙️ Best Cities for a New Entrant</div>
+        <p style="font-size:11px;color:var(--muted);margin-bottom:6px;line-height:1.4">Cities with fewest competing chains — room for a new player to capture share.</p>
+        <table class="table">
+          <tr><th>City</th><th class="num">Chains</th><th class="num">Stores</th><th class="num">Score</th><th>Why</th></tr>
+          ${d.whitespace.map(w => `<tr>
+            <td><strong>${w.city}</strong></td>
+            <td class="num">${w.focus}/${e.brandTotals.length}</td>
+            <td class="num">${w.total}</td>
+            <td class="num"><span class="opp-score ${w.score >= 75 ? 'high' : w.score >= 50 ? 'med' : 'low'}">${w.score}</span></td>
+            <td style="font-size:10px;color:var(--muted)">${w.reason}</td>
+          </tr>`).join("")}
+        </table>
+      </div>
+
+      <div class="rp-table-section">
+        <div class="rp-table-title">💡 Entry Strategy Insights</div>
+        <div class="compare-insights">
+          <div class="insight-card"><span class="insight-icon">📊</span>The QSR market in ${d.regionLabel} has <strong>${fmtInt(d.totalAll)} locations</strong> across ${e.brandTotals.length} chains. The market is <strong>${e.hhiLabel.toLowerCase()}</strong> (HHI: ${e.hhi})${e.hhi < 2500 ? ' — there is room for a new competitor.' : ' — dominated by top players.'}</div>
+          <div class="insight-card"><span class="insight-icon">🎯</span>${e.underserved[0] ? `<strong>${e.underserved[0].label}</strong> has the lowest store density (${e.underserved[0].density.toFixed(1)}/1k km²) — ideal for a new entrant seeking low competition.` : 'All regions show moderate competition.'}</div>
+          <div class="insight-card"><span class="insight-icon">⚠️</span>${e.mostCompetitive[0] ? `Avoid starting in <strong>${e.mostCompetitive[0].label}</strong> — density of ${e.mostCompetitive[0].density.toFixed(1)}/1k km² means heavy incumbent presence. Focus on underserved areas first.` : ''}</div>
+          <div class="insight-card"><span class="insight-icon">🚀</span>A new entrant matching the average chain size would need ~<strong>${fmtInt(e.avgStoresPerBrand)} locations</strong> for national parity. Consider starting with ${Math.max(1, Math.round(e.avgStoresPerBrand * 0.1))}–${Math.round(e.avgStoresPerBrand * 0.2)} stores in the top opportunity regions.</div>
+        </div>
+      </div>
+    `;
+  } else {
+    html = `
+      <div class="guesstimate-badge">⚡ Guesstimate · Based on Real Store Data${hasHeatmap ? ' + Heatmap' : ''}</div>
+
+      <div class="rp-kpi-grid" style="margin-bottom:12px">
+        <div class="rp-kpi-card"><div class="rp-kpi-value">${fmtInt(d.focusTotal)}</div><div class="rp-kpi-label">${brandLabel} Stores</div></div>
+        <div class="rp-kpi-card"><div class="rp-kpi-value">${fmtPct(d.nationalShare)}</div><div class="rp-kpi-label">National Share</div></div>
+        <div class="rp-kpi-card"><div class="rp-kpi-value">${d.saturation}%</div><div class="rp-kpi-label">Market Saturation</div></div>
+        <div class="rp-kpi-card"><div class="rp-kpi-value">${fmtInt(d.totalAll)}</div><div class="rp-kpi-label">Total Market</div></div>
+      </div>
+
+      ${hasHeatmap ? `
+      <div class="rp-table-section">
+        <div class="rp-table-title">💪 Strongest Regions for ${brandLabel}</div>
+        <table class="table">
+          <tr><th>Region</th><th class="num">${brandLabel}</th><th class="num">Competitors</th><th class="num">Share</th></tr>
+          ${d.strongRegions.slice(0, 4).map(r => `<tr>
+            <td>${r.label}</td>
+            <td class="num" style="color:#43A047;font-weight:700">${fmtInt(r.focusCount)}</td>
+            <td class="num">${fmtInt(r.compCount)}</td>
+            <td class="num"><strong>${fmtPct(r.focusShare)}</strong></td>
+          </tr>`).join("")}
+        </table>
+      </div>
+
+      <div class="rp-table-section">
+        <div class="rp-table-title">⚠️ Weakest Regions — Growth Targets</div>
+        <table class="table">
+          <tr><th>Region</th><th class="num">${brandLabel}</th><th class="num">Gap vs Avg</th><th>Advice</th></tr>
+          ${d.weakRegions.slice(0, 4).map(r => {
+            const gap = d.nationalShare > 0 ? Math.round((1 - r.focusShare / d.nationalShare) * 100) : 0;
+            return `<tr>
+              <td>${r.label}</td>
+              <td class="num" style="color:#E53935;font-weight:700">${fmtInt(r.focusCount)}</td>
+              <td class="num"><span class="opp-score low">-${gap}%</span></td>
+              <td style="font-size:10px;color:var(--muted)">${r.advice}</td>
+            </tr>`;
+          }).join("")}
+        </table>
+      </div>
+      ` : ''}
+
+      <div class="rp-table-section">
+        <div class="rp-table-title">🎯 Whitespace — Where to Expand ${brandLabel}</div>
+        ${d.whitespace.length > 0 ? `
+        <table class="table">
+          <tr><th>City</th><th class="num">You</th><th class="num">Comp.</th><th class="num">Score</th><th>Why</th></tr>
+          ${d.whitespace.map(w => `<tr>
+            <td><strong>${w.city}</strong></td>
+            <td class="num">${w.focus}</td>
+            <td class="num">${w.comp}</td>
+            <td class="num"><span class="opp-score ${w.score >= 75 ? 'high' : w.score >= 50 ? 'med' : 'low'}">${w.score}</span></td>
+            <td style="font-size:10px;color:var(--muted)">${w.reason}</td>
+          </tr>`).join("")}
+        </table>
+        ` : `<div class="rp-empty">Select a region or enable heatmap for whitespace analysis</div>`}
+      </div>
+
+      <div class="rp-table-section">
+        <div class="rp-table-title">🗺️ Regional Opportunity Index</div>
+        <table class="table">
+          <tr><th>Region</th><th class="num">Stores</th><th class="num">Density</th><th class="num">Opportunity</th></tr>
+          ${d.regionInsights.map(r => `<tr>
+            <td>${r.label}</td>
+            <td class="num">${fmtInt(r.totalSelected)}</td>
+            <td class="num">${r.density.toFixed(1)}</td>
+            <td class="num">
+              <div class="opp-bar-wrap">
+                <div class="opp-bar" style="width:${r.opportunity}%;background:${r.opportunity > 65 ? '#43A047' : r.opportunity > 35 ? '#FF9800' : '#E53935'}"></div>
+                <span>${r.opportunity}%</span>
+              </div>
+            </td>
+          </tr>`).join("")}
+        </table>
+      </div>
+    `;
+  }
+
+  panel.innerHTML = html;
 }
 
 // ── Export ──
