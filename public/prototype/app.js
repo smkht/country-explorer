@@ -669,9 +669,15 @@ function hexStyleGuesstimate(props) {
       hexGrid.features.forEach(hex => {
         const pop = hex.properties.estPop || 0;
         const adj = hex.properties.adjustedTotal || 0;
+        const hexAreaKm2 = turf.area(hex) / 1e6;
+        const density = hexAreaKm2 > 0 ? pop / hexAreaKm2 : 0;
+        // Minimum density threshold: ~200 people/km² (suburban+)
+        // Below that, opportunity drops sharply — no point opening in rural fields
+        const densityGate = density < 200 ? Math.pow(density / 200, 2) : 1;
         const popNorm = maxPopH > 0 ? pop / maxPopH : 0;
         const storeNorm = maxTotalH > 0 ? adj / maxTotalH : 0;
-        hex.properties.opportunity = popNorm > 0 ? Math.min(1, popNorm * (1 - storeNorm * 0.7)) : 0;
+        const rawOpp = popNorm > 0 ? Math.min(1, popNorm * (1 - storeNorm * 0.7)) : 0;
+        hex.properties.opportunity = rawOpp * densityGate;
       });
     }
 
@@ -768,10 +774,15 @@ function hexStyleGuesstimate(props) {
       hexGrid.features.forEach(hex => {
         const pop = hex.properties.estPop || 0;
         const adj = hex.properties.adjustedCount || 0;
+        const hexAreaKm2 = turf.area(hex) / 1e6;
+        const density = hexAreaKm2 > 0 ? pop / hexAreaKm2 : 0;
+        // Minimum density threshold: ~200 people/km² (suburban+)
+        // Below that, opportunity drops sharply — no point opening in rural fields
+        const densityGate = density < 200 ? Math.pow(density / 200, 2) : 1;
         const popNorm = maxPop > 0 ? pop / maxPop : 0;
         const storeNorm = maxCount > 0 ? adj / maxCount : 0;
-        // Opportunity = high population, low saturation
-        hex.properties.opportunity = popNorm > 0 ? Math.min(1, popNorm * (1 - storeNorm * 0.7)) : 0;
+        const rawOpp = popNorm > 0 ? Math.min(1, popNorm * (1 - storeNorm * 0.7)) : 0;
+        hex.properties.opportunity = rawOpp * densityGate;
         // Per-capita metric: people per store (higher = more opportunity)
         hex.properties.popPerStore = adj > 0 ? pop / adj : (pop > 0 ? Infinity : 0);
       });
