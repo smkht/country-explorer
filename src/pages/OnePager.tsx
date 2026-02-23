@@ -135,16 +135,22 @@ KPIs:</strong> activation &gt;60%, weekly engagement, monitoring upsell &gt;25%.
           {/* 5. Dev Documentation */}
           <Section title="5. Dev Documentation">
             <p className="mb-1">
-              <strong>Routes:</strong> <code className="text-[10px] px-1 rounded" style={{ background: "hsl(231 98% 96%)", color: "hsl(231 98% 51%)" }}>/</code> (landing, static) and <code className="text-[10px] px-1 rounded" style={{ background: "hsl(231 98% 96%)", color: "hsl(231 98% 51%)" }}>/explorer</code> (dashboard).
+              <strong>Stack:</strong> React 18 + Vite + Tailwind CSS + TypeScript. UI: shadcn/ui components. Animations: framer-motion. Routing: react-router-dom. Backend: Supabase (auth, DB, edge functions, storage).
             </p>
             <p className="mb-1">
-              <strong>Input:</strong> regions GeoJSON + brand location files (lat, lon, brand, city, region). Client-side filtering in prototype.
+              <strong>Routes:</strong> <code className="text-[10px] px-1 rounded" style={{ background: "hsl(231 98% 96%)", color: "hsl(231 98% 51%)" }}>/</code> — marketing landing page (static, no auth). <code className="text-[10px] px-1 rounded" style={{ background: "hsl(231 98% 96%)", color: "hsl(231 98% 51%)" }}>/explorer</code> — interactive dashboard (iframe embedding <code className="text-[10px] px-1 rounded" style={{ background: "hsl(231 98% 96%)", color: "hsl(231 98% 51%)" }}>/prototype/index.html</code>). <code className="text-[10px] px-1 rounded" style={{ background: "hsl(231 98% 96%)", color: "hsl(231 98% 51%)" }}>/onepager</code> — this document (print-optimized A4).
             </p>
             <p className="mb-1">
-              <strong>Layout:</strong> Leaflet map (~65% left), sidebar (~35% right) with tabs. Country/Region/City selectors always visible above tabs.
+              <strong>Landing page structure:</strong> Navbar (logo + nav links + CTA) → Hero (headline + subtitle + dual CTA + preview image) → Problem section (3 pain-point cards with icons) → Features section (4 tiles: coverage map, heatmap, brand comparison, guesstimate — each with screenshot, title, bullet points) → Use cases (3 cards: expansion, monitoring, benchmarking) → Stats section (real data counters: brands, locations, regions + country pills with "Soon" badges) → CTA footer → Footer.
+            </p>
+            <p className="mb-1">
+              <strong>Explorer prototype:</strong> Vanilla JS app in <code className="text-[10px] px-1 rounded" style={{ background: "hsl(231 98% 96%)", color: "hsl(231 98% 51%)" }}>public/prototype/</code>. Leaflet map (~65% left) + sidebar (~35% right) with 4 tabs: Overview (choropleth map, brand filters, KPI cards, region drilldown panel), Deep Review (heatmap + guesstimate toggles), Compare (market share bars, regional matrix, concentration chart, auto-insights), Export (CSV/GeoJSON download). Country/Region/City selectors always visible above tabs.
+            </p>
+            <p className="mb-1">
+              <strong>Data:</strong> <code className="text-[10px] px-1 rounded" style={{ background: "hsl(231 98% 96%)", color: "hsl(231 98% 51%)" }}>metrics_england.json</code> (brand totals, region totals, region×brand matrix, density per 1000km²). <code className="text-[10px] px-1 rounded" style={{ background: "hsl(231 98% 96%)", color: "hsl(231 98% 51%)" }}>england_regions_simplified.geojson</code> (9 region polygons). <code className="text-[10px] px-1 rounded" style={{ background: "hsl(231 98% 96%)", color: "hsl(231 98% 51%)" }}>england_locations_min.geojson</code> (5,718 POIs with lat/lon/brand/city/region). All client-side filtering, no backend queries in prototype.
             </p>
             <p>
-              <strong>MVP priority:</strong> Overview tab first (hex map + filters + KPIs + region panel), then heatmap toggle, then guesstimate. Compare + Export tabs follow.
+              <strong>Design system:</strong> HSL color tokens in index.css (--primary: blue 231 98% 61%, --background, --foreground, etc.). DM Sans font. Dark/light mode via CSS variables. All component colors use semantic tokens, never hardcoded values.
             </p>
           </Section>
 

@@ -50,13 +50,17 @@ Entry point for enterprise deals — easy to demo. Monitoring = weekly retention
 
 ## 5. Dev Documentation
 
-**Routes:** `/` (landing, static) and `/explorer` (dashboard).
+**Stack:** React 18 + Vite + Tailwind CSS + TypeScript. UI: shadcn/ui components. Animations: framer-motion. Routing: react-router-dom. Backend: Supabase (auth, DB, edge functions, storage).
 
-**Input:** regions GeoJSON + brand location files (lat, lon, brand, city, region). Client-side filtering in prototype.
+**Routes:** `/` — marketing landing page (static, no auth). `/explorer` — interactive dashboard (iframe embedding `/prototype/index.html`). `/onepager` — printable A4 document.
 
-**Layout:** Leaflet map (~65% left), sidebar (~35% right) with tabs. Country/Region/City selectors always visible above tabs.
+**Landing page structure:** Navbar (logo + nav links + CTA) → Hero (headline + subtitle + dual CTA + preview image) → Problem section (3 pain-point cards with icons) → Features section (4 tiles: coverage map, heatmap, brand comparison, guesstimate — each with screenshot, title, bullet points) → Use cases (3 cards: expansion, monitoring, benchmarking) → Stats section (real data counters: brands, locations, regions + country pills with "Soon" badges) → CTA footer → Footer.
 
-**MVP priority:** Overview tab first (hex map + filters + KPIs + region panel), then heatmap toggle, then guesstimate. Compare + Export tabs follow.
+**Explorer prototype:** Vanilla JS app in `public/prototype/`. Leaflet map (~65% left) + sidebar (~35% right) with 4 tabs: Overview (choropleth map, brand filters, KPI cards, region drilldown panel), Deep Review (heatmap + guesstimate toggles), Compare (market share bars, regional matrix, concentration chart, auto-insights), Export (CSV/GeoJSON download). Country/Region/City selectors always visible above tabs.
+
+**Data:** `metrics_england.json` (brand totals, region totals, region×brand matrix, density per 1000km²). `england_regions_simplified.geojson` (9 region polygons). `england_locations_min.geojson` (5,718 POIs with lat/lon/brand/city/region). All client-side filtering, no backend queries in prototype.
+
+**Design system:** HSL color tokens in index.css (--primary: blue 231 98% 61%, --background, --foreground, etc.). DM Sans font. Dark/light mode via CSS variables. All component colors use semantic tokens, never hardcoded values.
 
 ---
 
