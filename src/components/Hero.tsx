@@ -32,10 +32,12 @@ const Hero = () => (
             Try it for Free
           </a>
           <a
-            href="#features"
+            href="https://calendly.com/denis_getplace/30min"
+            target="_blank"
+            rel="noopener noreferrer"
             className="rounded-full border border-border bg-background text-foreground px-8 py-3.5 text-base font-semibold hover:bg-muted transition-colors"
           >
-            Explore Features
+            Get Full Access
           </a>
         </div>
       </motion.div>
