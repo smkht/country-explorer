@@ -2,7 +2,7 @@ import { motion } from "framer-motion";
 import { ArrowRight, MapPin } from "lucide-react";
 
 const CTASection = () => (
-  <section id="cta" className="py-24">
+  <section id="cta" className="py-10">
     <div className="container mx-auto px-6">
       <motion.div
         initial={{ opacity: 0, y: 30 }}
