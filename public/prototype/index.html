@@ -20,6 +20,9 @@
       <button class="sidebar-btn active" data-tab="overview" title="Coverage Map">
         <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/></svg>
       </button>
+      <button class="sidebar-btn" data-tab="deepreview" title="Deep Review">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 3h6a4 4 0 014 4v14a3 3 0 00-3-3H2z"/><path d="M22 3h-6a4 4 0 00-4 4v14a3 3 0 013-3h7z"/></svg>
+      </button>
       <button class="sidebar-btn" data-tab="compare" title="Brand Compare">
         <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg>
       </button>
@@ -73,6 +76,7 @@
       <div class="rp-header">
         <div class="rp-tabs">
           <button class="rp-tab active" data-tab="overview">Overview</button>
+          <button class="rp-tab" data-tab="deepreview">Deep Review</button>
           <button class="rp-tab" data-tab="compare">Compare</button>
           <button class="rp-tab" data-tab="export">Export</button>
         </div>
@@ -156,6 +160,59 @@
           </div>
         </div>
 
+        <!-- Brands section -->
+        <div class="rp-section" id="brandsSection">
+          <div class="rp-section-header">
+            <span>Brands</span>
+            <div class="rp-header-actions">
+              <button class="rp-link-btn" id="selectAllBrands">All</button>
+              <span class="rp-link-sep">·</span>
+              <button class="rp-link-btn" id="selectTop3Brands">Top 3</button>
+            </div>
+          </div>
+          <div id="brandList" class="brand-list"></div>
+        </div>
+
+        <!-- Metric -->
+        <div class="rp-section" id="metricSection">
+          <div class="rp-section-header"><span>Map Metric</span></div>
+          <div class="metric-toggles">
+            <button class="metric-toggle active" data-metric="count">Total locations</button>
+            <button class="metric-toggle" data-metric="density">Per 1,000 km²</button>
+          </div>
+        </div>
+
+        <!-- Region detail -->
+        <div class="rp-section" id="regionDetailSection">
+          <div class="rp-section-header">
+            <span id="selectedRegionText">Region Details</span>
+            <button class="rp-clear-btn hidden" id="clearRegion">✕</button>
+          </div>
+          <div id="regionEmpty" class="rp-empty">Select a region from the dropdown or click the map.</div>
+          <div id="regionDetails" class="hidden">
+            <div class="rp-kpi-grid compact">
+              <div class="rp-kpi-card small"><div class="rp-kpi-value" id="regionTotal">—</div><div class="rp-kpi-label">Locations</div></div>
+              <div class="rp-kpi-card small"><div class="rp-kpi-value" id="regionTopBrand">—</div><div class="rp-kpi-label" id="regionTopBrandHint">Top Brand</div></div>
+              <div class="rp-kpi-card small"><div class="rp-kpi-value" id="regionDensity">—</div><div class="rp-kpi-label">Per 1k km²</div></div>
+            </div>
+            <div class="rp-table-section">
+              <div class="rp-table-title">Brand Mix</div>
+              <table class="table" id="regionBrandTable"></table>
+            </div>
+            <div class="rp-table-section">
+              <div class="rp-table-title">Top Cities</div>
+              <table class="table" id="regionCityTable"></table>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ====== DEEP REVIEW ====== -->
+      <div class="rp-content hidden" id="deepreviewContent">
+        <div class="rp-section">
+          <p class="rp-desc">Advanced competitive analysis tools — heatmap overlays and AI-powered expansion insights.</p>
+        </div>
+
         <!-- Heatmap mode -->
         <div class="rp-section heatmap-section-highlight" id="heatmapSection">
           <div class="rp-section-header">
@@ -201,52 +258,6 @@
           </div>
           <div class="guesstimate-hint">Get AI-powered expansion advice for your restaurant chain: market saturation scores, whitespace opportunities ranked by city, strongest & weakest regions, and actionable recommendations — all based on real store location data.</div>
           <div id="guesstimatePanel" class="hidden"></div>
-        </div>
-
-        <!-- Brands section -->
-        <div class="rp-section" id="brandsSection">
-          <div class="rp-section-header">
-            <span>Brands</span>
-            <div class="rp-header-actions">
-              <button class="rp-link-btn" id="selectAllBrands">All</button>
-              <span class="rp-link-sep">·</span>
-              <button class="rp-link-btn" id="selectTop3Brands">Top 3</button>
-            </div>
-          </div>
-          <div id="brandList" class="brand-list"></div>
-        </div>
-
-        <!-- Metric -->
-        <div class="rp-section" id="metricSection">
-          <div class="rp-section-header"><span>Map Metric</span></div>
-          <div class="metric-toggles">
-            <button class="metric-toggle active" data-metric="count">Total locations</button>
-            <button class="metric-toggle" data-metric="density">Per 1,000 km²</button>
-          </div>
-        </div>
-
-        <!-- Region detail -->
-        <div class="rp-section" id="regionDetailSection">
-          <div class="rp-section-header">
-            <span id="selectedRegionText">Region Details</span>
-            <button class="rp-clear-btn hidden" id="clearRegion">✕</button>
-          </div>
-          <div id="regionEmpty" class="rp-empty">Select a region from the dropdown or click the map.</div>
-          <div id="regionDetails" class="hidden">
-            <div class="rp-kpi-grid compact">
-              <div class="rp-kpi-card small"><div class="rp-kpi-value" id="regionTotal">—</div><div class="rp-kpi-label">Locations</div></div>
-              <div class="rp-kpi-card small"><div class="rp-kpi-value" id="regionTopBrand">—</div><div class="rp-kpi-label" id="regionTopBrandHint">Top Brand</div></div>
-              <div class="rp-kpi-card small"><div class="rp-kpi-value" id="regionDensity">—</div><div class="rp-kpi-label">Per 1k km²</div></div>
-            </div>
-            <div class="rp-table-section">
-              <div class="rp-table-title">Brand Mix</div>
-              <table class="table" id="regionBrandTable"></table>
-            </div>
-            <div class="rp-table-section">
-              <div class="rp-table-title">Top Cities</div>
-              <table class="table" id="regionCityTable"></table>
-            </div>
-          </div>
         </div>
       </div>
 
