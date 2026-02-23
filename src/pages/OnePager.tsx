@@ -127,7 +127,8 @@ const OnePager = () => {
             </p>
             <p>
               <strong>Packaging:</strong> basic CE in Pro, smart layers + monitoring in Enterprise; or per-country module pricing.{" "}
-              <strong>KPIs:</strong> activation &gt;60%, weekly engagement, monitoring upsell &gt;25%.
+              <strong>
+KPIs:</strong> activation &gt;60%, weekly engagement, monitoring upsell &gt;25%.
             </p>
           </Section>
 
@@ -173,8 +174,7 @@ const OnePager = () => {
           body { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
         }
       `}</style>
-    </div>);};
-const Section = ({ title, children }: {title: string;children: React.ReactNode;}) =>
+    </div>);};const Section = ({ title, children }: {title: string;children: React.ReactNode;}) =>
 <div className="rounded-xl p-3" style={{ background: "rgba(255,255,255,0.7)", border: "1px solid hsl(220 13% 91%)" }}>
     <h2 className="text-xs font-bold mb-1 uppercase tracking-wide" style={{ color: "hsl(231 98% 61%)" }}>{title}</h2>
     {children}
