@@ -13,7 +13,7 @@ const CTASection = () => (
       >
         <div className="inline-flex items-center gap-2 rounded-full bg-[hsl(0_0%_100%/0.15)] px-4 py-1.5 text-sm font-medium text-primary-foreground mb-6">
           <MapPin className="w-3.5 h-3.5" />
-          Country Explorer for Restaurant Chains
+          Country Explorer
         </div>
         <h2 className="text-3xl md:text-4xl font-bold text-primary-foreground mb-4 tracking-tight">
           Ready to map your competition?
