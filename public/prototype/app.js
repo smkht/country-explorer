@@ -183,29 +183,42 @@ async function loadJSON(path) {
 
 // ── Hex colors ──
 function hexFillDensity(count, max, pop, maxPop) {
+  const isDensity = state.metric === "density";
   if (!max || count === 0) {
     // Tint empty cells by population density
     if (pop > 0 && maxPop > 0) {
       const t = Math.min(1, pop / maxPop);
-      return `hsla(230,30%,${94 - 10 * t}%,${0.08 + 0.18 * t})`;
+      const hue = isDensity ? 170 : 230;
+      return `hsla(${hue},30%,${94 - 10 * t}%,${0.08 + 0.18 * t})`;
     }
-    return "hsla(230,20%,92%,0.06)";
+    return isDensity ? "hsla(170,20%,92%,0.06)" : "hsla(230,20%,92%,0.06)";
   }
-  const t = Math.min(1, count / max);
+  // Power curve for better spread (density values cluster more, so use sqrt)
+  const raw = Math.min(1, count / max);
+  const t = isDensity ? Math.pow(raw, 0.5) : Math.pow(raw, 0.7);
+  if (isDensity) {
+    // Teal/cyan gradient for density
+    const l = 85 - 48 * t;
+    const s = 70 + 20 * t;
+    const a = 0.3 + 0.55 * t;
+    return `hsla(170,${s}%,${l}%,${a})`;
+  }
   const l = 90 - 50 * t;
   const a = 0.3 + 0.55 * t;
   return `hsla(230,85%,${l}%,${a})`;
 }
 function hexStrokeDensity(count, max, pop, maxPop) {
+  const isDensity = state.metric === "density";
   if (!max || count === 0) {
     if (pop > 0 && maxPop > 0) {
       const t = Math.min(1, pop / maxPop);
-      return `rgba(59,91,254,${0.06 + 0.15 * t})`;
+      return isDensity ? `rgba(0,180,160,${0.06 + 0.15 * t})` : `rgba(59,91,254,${0.06 + 0.15 * t})`;
     }
-    return "rgba(59,91,254,0.08)";
+    return isDensity ? "rgba(0,180,160,0.08)" : "rgba(59,91,254,0.08)";
   }
-  const t = Math.min(1, count / max);
-  return `rgba(59,91,254,${0.08 + 0.35 * t})`;
+  const raw = Math.min(1, count / max);
+  const t = isDensity ? Math.pow(raw, 0.5) : Math.pow(raw, 0.7);
+  return isDensity ? `rgba(0,180,160,${0.08 + 0.35 * t})` : `rgba(59,91,254,${0.08 + 0.35 * t})`;
 }
 
 function hexFillHeatmap(ratio) {
