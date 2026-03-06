@@ -948,6 +948,15 @@ function updateLegend() {
       <span class="legend-block" style="background:hsla(270,85%,60%,0.55)"></span>
       <span style="font-size:9px;color:var(--muted);margin-left:4px">Mid → Top</span>
     `;
+  } else if (state.metric === "density") {
+    title.textContent = "Density per 1,000 km²";
+    scale.innerHTML = `
+      <span class="legend-block" style="background:hsla(170,70%,85%,0.3)"></span>
+      <span class="legend-block" style="background:hsla(170,75%,72%,0.5)"></span>
+      <span class="legend-block" style="background:hsla(170,80%,60%,0.65)"></span>
+      <span class="legend-block" style="background:hsla(170,85%,48%,0.75)"></span>
+      <span class="legend-block" style="background:hsla(170,90%,37%,0.85)"></span>
+    `;
   } else {
     title.textContent = "Location density";
     scale.innerHTML = `
