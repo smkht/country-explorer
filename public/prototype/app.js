@@ -998,7 +998,6 @@ function rebuildLocationsLayer() {
   if (state.country !== "england") return;
 
   const zoom = state.map.getZoom();
-  // Always show dots — smaller at country zoom, larger when zoomed in
 
   const selected = selectedArr();
   const brandSet = new Set(selected);
@@ -1007,7 +1006,6 @@ function rebuildLocationsLayer() {
 
   let feats;
   if (zoom >= 11 && !regionFilter) {
-    // High zoom: show all visible points in viewport
     feats = getPointsInBounds(state.map.getBounds().pad(0.05), brandSet, null);
   } else {
     feats = getPointsInBounds(
@@ -1017,24 +1015,25 @@ function rebuildLocationsLayer() {
     );
     if (cityFilter) {
       const cityFeats = feats.filter(f => (f.properties.city || "").trim().toLowerCase() === cityFilter.toLowerCase());
-      // Fall back to region dots if city field is missing/sparse
-      if (cityFeats.length >= 10) {
-        feats = cityFeats;
-      }
-      // else: keep all region feats as fallback
+      if (cityFeats.length >= 10) feats = cityFeats;
     }
   }
 
   if (feats.length === 0) return;
 
-  // Limit markers for performance
-  const maxMarkers = zoom < 11 ? 5000 : 2000;
+  const maxMarkers = zoom < 11 ? 6000 : 3000;
   const displayFeats = feats.length > maxMarkers ? feats.slice(0, maxMarkers) : feats;
 
   const dotRadius = zoom >= 13 ? 6 : zoom >= 11 ? 4 : zoom >= 9 ? 2.5 : 1.5;
   const dotWeight = zoom >= 11 ? 1.5 : 0.5;
 
+  // Use Canvas renderer for much better performance with thousands of markers
+  if (!state._canvasRenderer) {
+    state._canvasRenderer = L.canvas({ padding: 0.5 });
+  }
+
   state.locationsLayer = L.geoJSON({ type: "FeatureCollection", features: displayFeats }, {
+    renderer: state._canvasRenderer,
     pointToLayer: (feature, latlng) => L.circleMarker(latlng, {
       radius: dotRadius,
       weight: dotWeight, color: "#fff", opacity: zoom >= 11 ? 1 : 0.6,
