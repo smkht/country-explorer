@@ -520,99 +520,162 @@ function flyToCity(cityName, region) {
   if (city) state.map.flyTo([city.lat, city.lon], 13, { duration: 1 });
 }
 
+// ── Fast region lookup cache ──
+// Pre-computes a grid mapping lat/lon cells to region names
+let _regionGridCache = null;
+function buildRegionGrid() {
+  if (_regionGridCache) return _regionGridCache;
+  const step = 0.1; // ~11km resolution
+  const grid = {};
+  // Sample points across England bounding box
+  for (let lat = 49.5; lat <= 56; lat += step) {
+    for (let lon = -6; lon <= 2; lon += step) {
+      const pt = turf.point([lon, lat]);
+      for (const region of state.regionsGeojson.features) {
+        if (turf.booleanPointInPolygon(pt, region)) {
+          const key = `${Math.floor(lon / step)},${Math.floor(lat / step)}`;
+          grid[key] = region.properties.rgn24nm || region.properties.name || '';
+          break;
+        }
+      }
+    }
+  }
+  _regionGridCache = { step, grid };
+  return _regionGridCache;
+}
+
+function fastRegionLookup(lon, lat) {
+  const rg = buildRegionGrid();
+  const key = `${Math.floor(lon / rg.step)},${Math.floor(lat / rg.step)}`;
+  return rg.grid[key] || null;
+}
+
+// Fast population estimate using cached region lookup (no turf calls per hex)
+function fastEstimatePopulation(hexAreaKm2, lon, lat) {
+  const regionName = fastRegionLookup(lon, lat);
+  if (regionName) {
+    const regionPop = REGION_POPULATION[regionName] || 0;
+    const regionArea = state.metrics.region_area_km2[regionName] || 1;
+    return Math.round((hexAreaKm2 / regionArea) * regionPop);
+  }
+  const totalArea = Object.values(state.metrics.region_area_km2).reduce((s, v) => s + v, 0);
+  return Math.round((hexAreaKm2 / totalArea) * ENGLAND_TOTAL_POPULATION);
+}
+
+function fastEstimateUnlocated(hexAreaKm2, lon, lat, brandFilter) {
+  if (!state.unlocatedStores) return 0;
+  const regionName = fastRegionLookup(lon, lat);
+  if (!regionName) return 0;
+  const regionPop = REGION_POPULATION[regionName] || 1;
+  const regionArea = state.metrics.region_area_km2[regionName] || 1;
+  const hexPop = Math.round((hexAreaKm2 / regionArea) * regionPop);
+  const unlocated = state.unlocatedStores[regionName] || {};
+  let relevantUnlocated = 0;
+  if (brandFilter) {
+    brandFilter.forEach(b => { relevantUnlocated += (unlocated[b] || 0); });
+  } else {
+    relevantUnlocated = unlocated._total || 0;
+  }
+  return relevantUnlocated * (hexPop / regionPop);
+}
+
+// ── Assign points to hex cells via centroid-based binning ──
+// Instead of turf.pointsWithinPolygon per hex (O(H*P)), we assign each point
+// to the nearest hex centroid in O(P) time.
+function binPointsToHexes(hexGrid, locations) {
+  // Build a lookup: for each hex, compute centroid
+  const hexCentroids = [];
+  hexGrid.features.forEach((hex, i) => {
+    const coords = hex.geometry.coordinates[0];
+    // Approximate centroid by averaging vertices (faster than turf.centroid)
+    let cx = 0, cy = 0;
+    const n = coords.length - 1; // last vertex = first
+    for (let j = 0; j < n; j++) { cx += coords[j][0]; cy += coords[j][1]; }
+    cx /= n; cy /= n;
+    hex._cx = cx; hex._cy = cy; hex._idx = i;
+    hexCentroids.push({ cx, cy, idx: i });
+  });
+
+  // Compute hex grid spacing from first two hex centroids
+  // For a hex grid, we can use a simple nearest-centroid approach
+  // Build a spatial hash of hex centroids for O(1) lookups
+  const hexBuckets = {};
+  // Estimate cell spacing from hex grid
+  let spacing = 0.1;
+  if (hexGrid.features.length >= 2) {
+    const h0 = hexGrid.features[0], h1 = hexGrid.features[1];
+    spacing = Math.max(
+      Math.abs(h0._cx - h1._cx),
+      Math.abs(h0._cy - h1._cy)
+    ) || 0.1;
+  }
+  const bucketSize = spacing * 2;
+
+  hexCentroids.forEach(({ cx, cy, idx }) => {
+    const bx = Math.floor(cx / bucketSize);
+    const by = Math.floor(cy / bucketSize);
+    const key = `${bx},${by}`;
+    if (!hexBuckets[key]) hexBuckets[key] = [];
+    hexBuckets[key].push({ cx, cy, idx });
+  });
+
+  // For each point, find nearest hex centroid
+  const hexPoints = new Array(hexGrid.features.length);
+  for (let i = 0; i < hexPoints.length; i++) hexPoints[i] = [];
+
+  locations.forEach(f => {
+    const [lon, lat] = f.geometry.coordinates;
+    const bx = Math.floor(lon / bucketSize);
+    const by = Math.floor(lat / bucketSize);
+
+    let bestDist = Infinity, bestIdx = -1;
+    // Check 3x3 neighborhood
+    for (let dx = -1; dx <= 1; dx++) {
+      for (let dy = -1; dy <= 1; dy++) {
+        const bucket = hexBuckets[`${bx + dx},${by + dy}`];
+        if (!bucket) continue;
+        for (const { cx, cy, idx } of bucket) {
+          const d = (lon - cx) * (lon - cx) + (lat - cy) * (lat - cy);
+          if (d < bestDist) { bestDist = d; bestIdx = idx; }
+        }
+      }
+    }
+    if (bestIdx >= 0) hexPoints[bestIdx].push(f);
+  });
+
+  return hexPoints;
+}
+
 // ── Honeycomb layer (optimized) ──
 function buildHexLayer() {
   if (state.hexLayer) { state.hexLayer.remove(); state.hexLayer = null; }
   if (!state.map || state.country !== "england") return;
 
+  const t0 = performance.now();
   const zoom = state.map.getZoom();
   const cellSize = cellSizeForZoom(zoom);
   const selected = selectedArr();
   const regionFilter = state.selectedRegion;
   const isHeatmap = state.heatmapMode && state.primaryBrand;
 
-// Helper: estimate population for a hex cell based on region proportional to area
-  function estimateHexPopulation(hex) {
-    const centroid = turf.centroid(hex);
-    const [lng, lat] = centroid.geometry.coordinates;
-    const hexAreaKm2 = turf.area(hex) / 1e6; // m² to km²
-    // Find which region this hex falls in
-    if (state.regionsGeojson) {
-      for (const region of state.regionsGeojson.features) {
-        if (turf.booleanPointInPolygon(centroid, region)) {
-          const regionName = region.properties.rgn24nm || region.properties.name || '';
-          const regionPop = REGION_POPULATION[regionName] || 0;
-          const regionArea = state.metrics.region_area_km2[regionName] || 1;
-          // Proportional population estimate
-          return Math.round((hexAreaKm2 / regionArea) * regionPop);
-        }
-      }
-    }
-    // Fallback: use England-wide average
-    const totalArea = Object.values(state.metrics.region_area_km2).reduce((s, v) => s + v, 0);
-    return Math.round((hexAreaKm2 / totalArea) * ENGLAND_TOTAL_POPULATION);
-  }
-
-  // Helper: estimate unlocated store weight for a hex (proportional to population share of region)
-  function estimateUnlocatedWeight(hex, brandFilter) {
-    if (!state.unlocatedStores) return 0;
-    const centroid = turf.centroid(hex);
-    const hexPop = estimateHexPopulation(hex);
-    if (state.regionsGeojson) {
-      for (const region of state.regionsGeojson.features) {
-        if (turf.booleanPointInPolygon(centroid, region)) {
-          const regionName = region.properties.rgn24nm || region.properties.name || '';
-          const regionPop = REGION_POPULATION[regionName] || 1;
-          const unlocated = state.unlocatedStores[regionName] || {};
-          // Sum unlocated stores for the relevant brands
-          let relevantUnlocated = 0;
-          if (brandFilter) {
-            brandFilter.forEach(b => { relevantUnlocated += (unlocated[b] || 0); });
-          } else {
-            relevantUnlocated = unlocated._total || 0;
-          }
-          // Distribute proportionally by population
-          return relevantUnlocated * (hexPop / regionPop);
-        }
-      }
-    }
-    return 0;
-  }
-
 // ── Guesstimate opportunity colors (purple gradient) ──
 function hexStyleGuesstimate(props) {
-  const rank = props.oppRank || 0; // 0 = not ranked, 1 = top major, 2 = mid
+  const rank = props.oppRank || 0;
   const count = props.adjustedCount || 0;
   const pop = props.estPop || 0;
 
   if (rank === 0) {
-    // Unranked — very subtle or invisible
     if (count === 0 && pop === 0) {
       return { fillColor: 'hsla(0,0%,94%,0.04)', fillOpacity: 1, weight: 0, color: 'transparent', opacity: 0 };
     }
-    // Subtle population tint
     return { fillColor: 'hsla(230,20%,92%,0.06)', fillOpacity: 1, weight: 0, color: 'transparent', opacity: 0 };
   }
 
   if (rank === 1) {
-    // Major opportunity — bright purple
-    return {
-      fillColor: 'hsla(270, 85%, 60%, 0.55)',
-      fillOpacity: 1,
-      weight: 0,
-      color: 'transparent',
-      opacity: 0
-    };
+    return { fillColor: 'hsla(270, 85%, 60%, 0.55)', fillOpacity: 1, weight: 0, color: 'transparent', opacity: 0 };
   }
 
-  // Mid-level opportunity — lighter purple
-  return {
-    fillColor: 'hsla(270, 65%, 72%, 0.35)',
-    fillOpacity: 1,
-    weight: 0,
-    color: 'transparent',
-    opacity: 0
-  };
+  return { fillColor: 'hsla(270, 65%, 72%, 0.35)', fillOpacity: 1, weight: 0, color: 'transparent', opacity: 0 };
 }
 
   const bounds = state.map.getBounds().pad(0.15);
@@ -630,54 +693,51 @@ function hexStyleGuesstimate(props) {
 
   // Use spatial index for fast point retrieval
   const locations = getPointsInBounds(bounds, brandFilter, regionFilter);
-  // Don't return early — we want to show empty hex outlines too
 
   const hexGrid = turf.hexGrid(bbox, cellSize, { units: 'kilometers' });
-  const points = turf.featureCollection(locations.map(f => turf.point(f.geometry.coordinates, f.properties)));
+
+  // Compute hex area once (all hexes in a regular grid have same area)
+  const hexAreaKm2 = hexGrid.features.length > 0 ? turf.area(hexGrid.features[0]) / 1e6 : 1;
+
+  // Bin points to hexes using fast spatial hash (replaces per-hex pointsWithinPolygon)
+  const hexPoints = binPointsToHexes(hexGrid, locations);
 
   if (isHeatmap) {
     const competitors = state.compareMode === "all"
       ? state.metrics.brands.filter(b => b !== state.primaryBrand)
       : (state.secondaryBrand ? [state.secondaryBrand] : []);
 
-    hexGrid.features.forEach(hex => {
-      const pts = turf.pointsWithinPolygon(points, hex);
+    hexGrid.features.forEach((hex, i) => {
+      const pts = hexPoints[i];
       let primary = 0, comp = 0;
-      pts.features.forEach(p => {
-        if (p.properties.brand === state.primaryBrand) primary++;
-        else if (competitors.includes(p.properties.brand)) comp++;
+      pts.forEach(f => {
+        if (f.properties.brand === state.primaryBrand) primary++;
+        else if (competitors.includes(f.properties.brand)) comp++;
       });
-      const unlocW = estimateUnlocatedWeight(hex, brandFilter);
-      const unlocPrimary = estimateUnlocatedWeight(hex, new Set([state.primaryBrand]));
-      const unlocComp = unlocW - unlocPrimary;
+      const cx = hex._cx, cy = hex._cy;
+      const unlocW = fastEstimateUnlocated(hexAreaKm2, cx, cy, brandFilter);
+      const unlocPrimary = fastEstimateUnlocated(hexAreaKm2, cx, cy, new Set([state.primaryBrand]));
       hex.properties.primary = primary;
       hex.properties.competitor = comp;
       hex.properties.total = primary + comp;
       hex.properties.unlocated = unlocW;
       hex.properties.adjustedTotal = primary + comp + unlocW;
       hex.properties.ratio = (primary + comp + unlocW) > 0 ? (primary + unlocPrimary) / (primary + comp + unlocW) : NaN;
-      hex.properties.estPop = estimateHexPopulation(hex);
+      hex.properties.estPop = fastEstimatePopulation(hexAreaKm2, cx, cy);
     });
 
     state._hexMaxPop = Math.max(1, ...hexGrid.features.map(h => h.properties.estPop || 0));
 
-    // Guesstimate + heatmap: compute proximity-aware opportunity per hex
+    // Guesstimate + heatmap
     const isGuessHeat = state.guesstimateMode;
     if (isGuessHeat) {
-      // Step 1: Compute raw opportunity score per hex
-      // Good opportunity = area near competitors (high nearby activity), has population,
-      // but the primary brand is under-represented
       hexGrid.features.forEach(hex => {
         const pop = hex.properties.estPop || 0;
-        const hexAreaKm2 = turf.area(hex) / 1e6;
         const density = hexAreaKm2 > 0 ? pop / hexAreaKm2 : 0;
         const comp = hex.properties.competitor || 0;
         const primary = hex.properties.primary || 0;
         const total = hex.properties.adjustedTotal || 0;
 
-        // Gate: must have minimum population density (~200 ppl/km²)
-        // Zoom-aware population gate: at city zoom, hex cells are tiny so
-        // region-average population estimates are very low. Relax thresholds.
         const minDensity = zoom >= 12 ? 20 : zoom >= 10 ? 80 : 200;
         const minPop = zoom >= 12 ? 10 : zoom >= 10 ? 100 : 500;
         if (density < minDensity || pop < minPop) {
@@ -686,39 +746,22 @@ function hexStyleGuesstimate(props) {
           return;
         }
 
-        // Score factors:
-        // 1. Competitor presence (nearby activity = demand signal) — higher is better
-        const compSignal = Math.min(1, comp / 5); // normalize: 5+ competitors = max signal
-        // 2. Primary brand gap (fewer own stores = more opportunity)
+        const compSignal = Math.min(1, comp / 5);
         const primaryGap = total > 0 ? Math.max(0, 1 - (primary / Math.max(1, total))) : 1;
-        // 3. Population per store (higher = more underserved)
         const popPerStore = total > 0 ? pop / total : pop;
-        const underserved = Math.min(1, popPerStore / 15000); // 15k+ ppl per store = max
-        // 4. Not too packed (if too many total stores, less opportunity)
-        const notPacked = Math.max(0, 1 - (total / 15)); // 15+ stores in cell = fully packed
+        const underserved = Math.min(1, popPerStore / 15000);
+        const notPacked = Math.max(0, 1 - (total / 15));
 
-        // Weighted combination
         const rawOpp = (compSignal * 0.3 + primaryGap * 0.25 + underserved * 0.25 + notPacked * 0.2);
         hex.properties.opportunity = rawOpp;
-        hex.properties.oppRank = 0; // will be set below
+        hex.properties.oppRank = 0;
       });
 
-      // Step 2: Filter to selected region if applicable
       let candidates = hexGrid.features.filter(h => h.properties.opportunity > 0.15);
       if (regionFilter) {
-        candidates = candidates.filter(h => {
-          const centroid = turf.centroid(h);
-          if (state.regionsGeojson) {
-            for (const region of state.regionsGeojson.features) {
-              const regionName = region.properties.rgn24nm || region.properties.name || '';
-              if (regionName === regionFilter && turf.booleanPointInPolygon(centroid, region)) return true;
-            }
-          }
-          return false;
-        });
+        candidates = candidates.filter(h => fastRegionLookup(h._cx, h._cy) === regionFilter);
       }
 
-      // Step 3: Sort by opportunity, pick top 3-5 major + 5-7 mid
       candidates.sort((a, b) => (b.properties.opportunity || 0) - (a.properties.opportunity || 0));
       const majorCount = Math.min(5, Math.max(3, Math.floor(candidates.length * 0.15)));
       const midCount = Math.min(7, Math.max(5, Math.floor(candidates.length * 0.25)));
@@ -726,7 +769,6 @@ function hexStyleGuesstimate(props) {
       candidates.slice(majorCount, majorCount + midCount).forEach(h => { h.properties.oppRank = 2; });
     }
 
-    // At city zoom (>=12), show all hexes to fill the grid; otherwise filter
     const showAll = zoom >= 12;
     const displayHexes = isGuessHeat && !showAll
       ? hexGrid.features.filter(h => (h.properties.oppRank > 0) || h.properties.total > 0)
@@ -739,7 +781,6 @@ function hexStyleGuesstimate(props) {
 
         if (isGuessHeat) {
           if (p.oppRank > 0) return hexStyleGuesstimate(p);
-          // Has stores but not ranked — show normal heatmap but subdued
           return {
             fillColor: hexFillHeatmap(p.ratio),
             fillOpacity: 0.6,
@@ -749,7 +790,6 @@ function hexStyleGuesstimate(props) {
           };
         }
 
-        // Normal heatmap (no guesstimate)
         if (p.total === 0) {
           const pop = p.estPop || 0;
           const t = maxPop > 0 ? Math.min(1, pop / maxPop) : 0;
@@ -799,14 +839,14 @@ function hexStyleGuesstimate(props) {
     let maxPop = 0;
     const isDensityMetric = state.metric === "density";
     const isGuesstimate = state.guesstimateMode && !isHeatmap;
-    hexGrid.features.forEach(hex => {
-      const pts = turf.pointsWithinPolygon(points, hex);
-      hex.properties.count = pts.features.length;
-      hex.properties.estPop = estimateHexPopulation(hex);
-      hex.properties.unlocated = estimateUnlocatedWeight(hex, brandFilter);
+    hexGrid.features.forEach((hex, i) => {
+      const pts = hexPoints[i];
+      hex.properties.count = pts.length;
+      const cx = hex._cx, cy = hex._cy;
+      hex.properties.estPop = fastEstimatePopulation(hexAreaKm2, cx, cy);
+      hex.properties.unlocated = fastEstimateUnlocated(hexAreaKm2, cx, cy, brandFilter);
       hex.properties.adjustedCount = hex.properties.count + hex.properties.unlocated;
       if (isDensityMetric) {
-        const hexAreaKm2 = turf.area(hex) / 1e6;
         hex.properties.displayValue = hexAreaKm2 > 0 ? hex.properties.adjustedCount / (hexAreaKm2 / 1000) : 0;
       } else {
         hex.properties.displayValue = hex.properties.adjustedCount;
@@ -820,10 +860,8 @@ function hexStyleGuesstimate(props) {
       hexGrid.features.forEach(hex => {
         const pop = hex.properties.estPop || 0;
         const adj = hex.properties.adjustedCount || 0;
-        const hexAreaKm2 = turf.area(hex) / 1e6;
         const density = hexAreaKm2 > 0 ? pop / hexAreaKm2 : 0;
 
-        // Zoom-aware population gate
         const minDensity = zoom >= 12 ? 20 : zoom >= 10 ? 80 : 200;
         const minPop = zoom >= 12 ? 10 : zoom >= 10 ? 100 : 500;
         if (density < minDensity || pop < minPop) {
@@ -832,12 +870,9 @@ function hexStyleGuesstimate(props) {
           return;
         }
 
-        // Nearby store activity = demand signal
         const storeSignal = Math.min(1, adj / 4);
-        // Population per store — higher = more underserved
         const popPerStore = adj > 0 ? pop / adj : pop;
         const underserved = Math.min(1, popPerStore / 15000);
-        // Not oversaturated
         const notPacked = Math.max(0, 1 - (adj / 12));
 
         const rawOpp = (storeSignal * 0.25 + underserved * 0.4 + notPacked * 0.2 + Math.min(1, density / 2000) * 0.15);
@@ -845,22 +880,11 @@ function hexStyleGuesstimate(props) {
         hex.properties.oppRank = 0;
       });
 
-      // Filter to region if selected
       let candidates = hexGrid.features.filter(h => h.properties.opportunity > 0.15);
       if (regionFilter) {
-        candidates = candidates.filter(h => {
-          const centroid = turf.centroid(h);
-          if (state.regionsGeojson) {
-            for (const region of state.regionsGeojson.features) {
-              const regionName = region.properties.rgn24nm || region.properties.name || '';
-              if (regionName === regionFilter && turf.booleanPointInPolygon(centroid, region)) return true;
-            }
-          }
-          return false;
-        });
+        candidates = candidates.filter(h => fastRegionLookup(h._cx, h._cy) === regionFilter);
       }
 
-      // Rank: top 3-5 major, 5-7 mid
       candidates.sort((a, b) => (b.properties.opportunity || 0) - (a.properties.opportunity || 0));
       const majorCount = Math.min(5, Math.max(3, Math.floor(candidates.length * 0.15)));
       const midCount = Math.min(7, Math.max(5, Math.floor(candidates.length * 0.25)));
@@ -868,7 +892,6 @@ function hexStyleGuesstimate(props) {
       candidates.slice(majorCount, majorCount + midCount).forEach(h => { h.properties.oppRank = 2; });
     }
 
-    // At city zoom (>=12), show all hexes for full coverage
     const showAll = zoom >= 12;
     const displayHexes = isGuesstimate && !showAll
       ? hexGrid.features.filter(h => (h.properties.oppRank > 0) || h.properties.count > 0)
@@ -880,7 +903,6 @@ function hexStyleGuesstimate(props) {
           return hexStyleGuesstimate(f.properties);
         }
         if (isGuesstimate) {
-          // Store cells — normal density but subdued
           return {
             fillColor: hexFillDensity(f.properties.displayValue, maxCount, f.properties.estPop, maxPop),
             fillOpacity: 0.5,
@@ -920,6 +942,7 @@ function hexStyleGuesstimate(props) {
   if (state.regionsLayer) state.regionsLayer.bringToFront();
   if (state.locationsLayer) state.locationsLayer.bringToFront();
   updateLegend();
+  console.log(`⚡ Hex layer built in ${(performance.now() - t0).toFixed(0)}ms (${hexGrid.features.length} hexes, ${locations.length} points)`);
 }
 
 function updateLegend() {
