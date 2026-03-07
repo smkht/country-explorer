@@ -2039,6 +2039,7 @@ async function main() {
     });
 
     buildSpatialIndex();
+    buildRegionGrid(); // Pre-compute region lookup grid
     computeUnlocatedStores();
     buildBrandList();
     buildRegionSelect();
