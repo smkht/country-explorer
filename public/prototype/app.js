@@ -1991,9 +1991,17 @@ function wireUI() {
 // ── Main ──
 async function main() {
   try {
-    state.metrics = await loadJSON("metrics_england.json");
-    state.regionsGeojson = await loadJSON("england_regions_simplified.geojson");
-    state.locationsGeojson = await loadJSON("england_locations_min.geojson");
+    const t0 = performance.now();
+    // Load all data in parallel
+    const [metrics, regions, locations] = await Promise.all([
+      loadJSON("metrics_england.json"),
+      loadJSON("england_regions_simplified.geojson"),
+      loadJSON("england_locations_min.geojson")
+    ]);
+    state.metrics = metrics;
+    state.regionsGeojson = regions;
+    state.locationsGeojson = locations;
+    console.log(`⚡ Data loaded in ${(performance.now() - t0).toFixed(0)}ms`);
 
     // Normalize city names to title case (e.g. "LONDON" → "London", "st. albans" → "St. Albans")
     state.locationsGeojson.features.forEach(f => {
