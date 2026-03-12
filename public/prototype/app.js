@@ -295,6 +295,19 @@ function hexStrokeHeatmap(ratio) {
 }
 
 function cellSizeForZoom(zoom) {
+  const focused = !!state.selectedRegion;
+
+  if (focused) {
+    if (zoom >= 14) return 0.35;
+    if (zoom >= 13) return 0.55;
+    if (zoom >= 12) return 0.8;
+    if (zoom >= 11) return 1.1;
+    if (zoom >= 10) return 1.6;
+    if (zoom >= 9) return 2.6;
+    if (zoom >= 8) return 4;
+    return 6;
+  }
+
   if (zoom >= 14) return 0.6;
   if (zoom >= 13) return 0.9;
   if (zoom >= 12) return 1.2;
@@ -780,7 +793,7 @@ function computeCoverageFromNearbyStores(cx, cy, estPop, areaKm2, nearbyStores) 
     brandCounts[brand] = (brandCounts[brand] || 0) + 1;
   });
 
-  const coveragePct = Math.max(0, Math.min(1, score));
+  const coveragePct = Math.max(0, Math.min(1, 1 - Math.exp(-score * 0.8)));
   const overlapIndex = Math.max(0, score - 1); // >0 means multiple stores overlap
   const sharedPct = Math.max(0, Math.min(1, overlapIndex / Math.max(1, score)));
   const exclusivePct = Math.max(0, coveragePct * (1 - sharedPct));
@@ -810,7 +823,8 @@ function buildHexLayer() {
   const zoom = state.map.getZoom();
   const cellSize = cellSizeForZoom(zoom);
   const selected = selectedArr();
-  const regionFilter = state.selectedRegion;
+  const regionFilter = null;
+  const selectedRegion = state.selectedRegion;
   const isHeatmap = state.heatmapMode && state.primaryBrand;
 
   const bounds = state.map.getBounds().pad(0.15);
@@ -954,6 +968,8 @@ function buildHexLayer() {
     const displayHexes = hexGrid.features;
     state.hexLayer = L.geoJSON({ type: "FeatureCollection", features: displayHexes }, {
       style: f => {
+        const covered = (f.properties.coveragePct || 0) > 0.10;
+
         return {
           fillColor: hexFillCoverageMode(
             f.properties.displayValue,
@@ -963,14 +979,16 @@ function buildHexLayer() {
             maxPop
           ),
           fillOpacity: 1,
-          weight: 1,
-          color: hexStrokeCoverageMode(
-            f.properties.displayValue,
-            maxCount,
-            state.coverageView,
-            f.properties.estPop,
-            maxPop
-          ),
+          weight: covered ? 0 : 0.8,
+          color: covered
+            ? "transparent"
+            : hexStrokeCoverageMode(
+                f.properties.displayValue,
+                maxCount,
+                state.coverageView,
+                f.properties.estPop,
+                maxPop
+              ),
           opacity: 1
         };
       },
@@ -1144,49 +1162,74 @@ function refreshAll() {
   renderRegionTable();
 }
 
+function getCoverageSummaryFromHexes(regionName = null) {
+  if (!state.hexLayer) {
+    return {
+      coveredPop: 0,
+      coveredAreaKm2: 0,
+      coveredHexes: 0,
+      avgContributingStores: 0
+    };
+  }
+
+  let coveredPop = 0;
+  let coveredAreaKm2 = 0;
+  let coveredHexes = 0;
+  let contributingStoresSum = 0;
+
+  state.hexLayer.eachLayer(layer => {
+    const f = layer.feature;
+    if (!f || !f.properties) return;
+
+    const cx = f.properties._cx;
+    const cy = f.properties._cy;
+    if (cx == null || cy == null) return;
+
+    const region = fastRegionLookup(cx, cy);
+    if (regionName && region !== regionName) return;
+
+    const coveragePct = f.properties.coveragePct || 0;
+    if (coveragePct <= 0.10) return;
+
+    coveredPop += f.properties.coveredPop || 0;
+    coveredAreaKm2 += f.properties.coveredAreaKm2 || 0;
+    coveredHexes += 1;
+    contributingStoresSum += f.properties.contributingStores || 0;
+  });
+
+  return {
+    coveredPop,
+    coveredAreaKm2,
+    coveredHexes,
+    avgContributingStores: coveredHexes ? (contributingStoresSum / coveredHexes) : 0
+  };
+}
+
 function refreshKPIs() {
   const selected = selectedArr();
   const regionFilter = state.selectedRegion;
-  const cityFilter = state.selectedCity;
 
-  const areaCounts = {};
-  if (cityFilter && regionFilter) {
-    state.locationsGeojson.features.forEach(f => {
-      const p = f.properties;
-      if (p.region !== regionFilter) return;
-      if ((p.city || "").trim().toLowerCase() !== cityFilter.toLowerCase()) return;
-      areaCounts[p.brand] = (areaCounts[p.brand] || 0) + 1;
-    });
-  } else if (regionFilter) {
-    Object.assign(areaCounts, state.metrics.region_brand_counts[regionFilter] || {});
-  } else {
-    Object.assign(areaCounts, state.metrics.brand_totals || {});
-  }
+  const areaCounts = regionFilter
+    ? (state.metrics.region_brand_counts[regionFilter] || {})
+    : (state.metrics.brand_totals || {});
 
   const totalLocations = selected.reduce((s, b) => s + (areaCounts[b] || 0), 0);
 
-  let population = 0;
-  let areaKm2 = 0;
-
-  if (regionFilter) {
-    population = state.metrics.region_population_2023?.[regionFilter] || 0;
-    areaKm2 = state.metrics.region_area_km2?.[regionFilter] || 0;
-  } else {
-    population = Object.values(state.metrics.region_population_2023 || {}).reduce((s, v) => s + v, 0);
-    areaKm2 = Object.values(state.metrics.region_area_km2 || {}).reduce((s, v) => s + v, 0);
-  }
+  const population = regionFilter
+    ? (state.metrics.region_population_2023?.[regionFilter] || 0)
+    : Object.values(state.metrics.region_population_2023 || {}).reduce((s, v) => s + v, 0);
 
   const hexSummary = getCoverageSummaryFromHexes(regionFilter || null);
-  const coveragePct = population ? (hexSummary.coveredPop / population) : 0;
+  const coveragePct = population > 0 ? (hexSummary.coveredPop / population) : 0;
   const efficiency = totalLocations > 0 ? (hexSummary.coveredPop / totalLocations) : null;
 
   document.getElementById("kpiTotal").textContent = fmtInt(totalLocations);
   document.getElementById("kpiRegions").textContent =
-    hexSummary.coveredPop != null ? fmtInt(Math.round(hexSummary.coveredPop)) : "—";
+    hexSummary.coveredPop ? fmtInt(Math.round(hexSummary.coveredPop)) : "—";
   document.getElementById("kpiDense").textContent =
     coveragePct ? fmtPct(coveragePct) : "—";
   document.getElementById("kpiLondonShare").textContent =
-    efficiency != null ? fmtInt(Math.round(efficiency)) : "—";
+    efficiency ? fmtInt(Math.round(efficiency)) : "—";
 
   document.querySelector("#kpiTotal + .rp-kpi-label").textContent = "Locations";
   document.querySelector("#kpiRegions + .rp-kpi-label").textContent = "Covered Population";
@@ -1306,49 +1349,6 @@ function estimateCoveredHexCount(regionName = null) {
   return count;
 }
 
-function getCoverageSummaryFromHexes(regionName = null) {
-  if (!state.hexLayer) {
-    return {
-      coveredPop: 0,
-      coveredAreaKm2: 0,
-      coveredHexes: 0,
-      avgContributingStores: 0
-    };
-  }
-
-  let coveredPop = 0;
-  let coveredAreaKm2 = 0;
-  let coveredHexes = 0;
-  let contributingStoresSum = 0;
-
-  state.hexLayer.eachLayer(layer => {
-    const f = layer.feature;
-    if (!f || !f.properties) return;
-
-    const cx = f.properties._cx;
-    const cy = f.properties._cy;
-    if (cx == null || cy == null) return;
-
-    const region = fastRegionLookup(cx, cy);
-    if (regionName && region !== regionName) return;
-
-    const coveragePct = f.properties.coveragePct || 0;
-    if (coveragePct <= 0.10) return;
-
-    coveredPop += f.properties.coveredPop || 0;
-    coveredAreaKm2 += f.properties.coveredAreaKm2 || 0;
-    coveredHexes += 1;
-    contributingStoresSum += f.properties.contributingStores || 0;
-  });
-
-  return {
-    coveredPop,
-    coveredAreaKm2,
-    coveredHexes,
-    avgContributingStores: coveredHexes ? (contributingStoresSum / coveredHexes) : 0
-  };
-}
-
 function renderRegionTable() {
   const selected = selectedArr();
   const popByRegion = state.metrics.region_population_2023 || {};
@@ -1356,9 +1356,10 @@ function renderRegionTable() {
   const rows = state.metrics.regions.map(region => {
     const counts = state.metrics.region_brand_counts[region] || {};
     const total = selected.reduce((s, b) => s + (counts[b] || 0), 0);
-    const population = popByRegion[region] || null;
+    const population = popByRegion[region] || 0;
+
     const hexSummary = getCoverageSummaryFromHexes(region);
-    const coveragePct = population ? (hexSummary.coveredPop / population) : 0;
+    const coveragePct = population > 0 ? (hexSummary.coveredPop / population) : 0;
     const efficiency = total > 0 ? (hexSummary.coveredPop / total) : null;
 
     return {
@@ -1385,10 +1386,10 @@ function renderRegionTable() {
       <tr class="region-row ${r.region === state.selectedRegion ? 'active' : ''}" data-region="${r.region}">
         <td><strong>${r.region.replace(" (England)", "")}</strong></td>
         <td class="num">${fmtInt(r.total)}</td>
-        <td class="num">${r.coveredPop != null ? fmtInt(Math.round(r.coveredPop)) : "—"}</td>
+        <td class="num">${r.coveredPop ? fmtInt(Math.round(r.coveredPop)) : "—"}</td>
         <td class="num">${r.coveragePct ? fmtPct(r.coveragePct) : "—"}</td>
         <td class="num">${fmtInt(r.coveredHexes)}</td>
-        <td class="num">${r.efficiency != null ? fmtInt(Math.round(r.efficiency)) : "—"}</td>
+        <td class="num">${r.efficiency ? fmtInt(Math.round(r.efficiency)) : "—"}</td>
       </tr>
     `).join("")}
   `;
@@ -1406,12 +1407,11 @@ function renderRegionTable() {
 
 function renderGreatBritainSummary() {
   const selected = selectedArr();
-  const popByRegion = state.metrics.region_population_2023 || {};
-  const areaTotal = Object.values(state.metrics.region_area_km2).reduce((s, v) => s + v, 0);
-  const populationTotal = Object.values(popByRegion).reduce((s, v) => s + v, 0);
+  const populationTotal = Object.values(state.metrics.region_population_2023 || {}).reduce((s, v) => s + v, 0);
   const countsTotal = selected.reduce((s, b) => s + (state.metrics.brand_totals[b] || 0), 0);
+
   const hexSummary = getCoverageSummaryFromHexes();
-  const coveragePct = populationTotal ? (hexSummary.coveredPop / populationTotal) : 0;
+  const coveragePct = populationTotal > 0 ? (hexSummary.coveredPop / populationTotal) : 0;
   const efficiency = countsTotal > 0 ? (hexSummary.coveredPop / countsTotal) : null;
 
   const table = document.getElementById("gbSummaryTable");
@@ -1427,10 +1427,10 @@ function renderGreatBritainSummary() {
     <tr class="gb-row">
       <td><strong>Great Britain</strong></td>
       <td class="num">${fmtInt(countsTotal)}</td>
-      <td class="num">${hexSummary.coveredPop != null ? fmtInt(Math.round(hexSummary.coveredPop)) : "—"}</td>
+      <td class="num">${hexSummary.coveredPop ? fmtInt(Math.round(hexSummary.coveredPop)) : "—"}</td>
       <td class="num">${coveragePct ? fmtPct(coveragePct) : "—"}</td>
       <td class="num">${fmtInt(hexSummary.coveredHexes)}</td>
-      <td class="num">${efficiency != null ? fmtInt(Math.round(efficiency)) : "—"}</td>
+      <td class="num">${efficiency ? fmtInt(Math.round(efficiency)) : "—"}</td>
     </tr>
   `;
 
