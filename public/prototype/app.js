@@ -979,7 +979,9 @@ function computeCoverageMetrics(total, areaKm2, population, diversity, densityPe
   const radius = Math.min(8, Math.max(1.8, baseRadius * urbanFactor / (1 + intensity)));
   const coverageArea = total * Math.PI * radius * radius;
   const coverageShare = Math.min(1, coverageArea / areaKm2);
-  const overlapIndex = Math.max(0, coverageArea / areaKm2 - 1);
+  const diversityFactor = Math.max(0, diversity - 1);
+  const densityFactor = Math.min(1.5, popDensity / 1200);
+  const overlapIndex = Math.max(0, coverageShare * diversityFactor * 0.2 * densityFactor);
   return {
     coveredPop: population * coverageShare,
     coveragePct: coverageShare,
@@ -1155,6 +1157,7 @@ function renderCityBreakdown() {
   const selected = selectedArr();
   const region = state.selectedRegion;
   const cityFilter = state.selectedCity;
+  const normCity = c => (c || "").trim().toLowerCase();
   const cityBrand = {};
 
   state.locationsGeojson.features.forEach(f => {
@@ -1170,12 +1173,51 @@ function renderCityBreakdown() {
   const topCities = Object.entries(cityBrand).sort((a, b) => b[1].total - a[1].total).slice(0, 10);
   const table = document.getElementById("cityBreakdownTable");
   table.innerHTML = `
-    <tr><th>City</th>${selected.map(b => `<th class="num" style="color:${BRAND_COLORS[b]||'#3B5BFE'}">${b.split("'")[0]}</th>`).join("")}<th class="num">Total</th></tr>
+    <tr>
+      <th>City</th>
+      <th class="num">Locations</th>
+      <th class="num">Density</th>
+      <th>Leader</th>
+      <th class="num">Leader Share</th>
+      <th class="num">People / Store</th>
+      <th class="num">Income / Head</th>
+      <th class="num">Covered Pop</th>
+      <th class="num">Coverage %</th>
+      <th class="num">Overlap</th>
+    </tr>
     ${topCities.map(([city, data]) => `
-      <tr class="city-row ${state.selectedCity && city.toLowerCase() === state.selectedCity.toLowerCase() ? 'active' : ''}" data-city="${city}" data-region="${region || ''}">
+      <tr class="city-row ${cityFilter && normCity(city) === normCity(cityFilter) ? 'active' : ''}" data-city="${city}" data-region="${region || ''}">
         <td>${city}</td>
-        ${selected.map(b => `<td class="num">${data.counts[b] || 0}</td>`).join("")}
-        <td class="num" style="font-weight:700">${data.total}</td>
+        ${(() => {
+          const regionArea = region ? (state.metrics.region_area_km2[region] || 1) : Object.values(state.metrics.region_area_km2).reduce((s, v) => s + v, 0);
+          const regionPop = region ? (state.metrics.region_population_2023[region] || 0) : Object.values(state.metrics.region_population_2023).reduce((s, v) => s + v, 0);
+          const regionTotals = region ? (state.metrics.region_brand_counts[region] || {}) : state.metrics.brand_totals;
+          const regionTotalAll = selected.reduce((s, b) => s + (regionTotals[b] || 0), 0) || 1;
+          const cityTotal = data.total;
+          const cityArea = regionTotalAll ? (cityTotal / regionTotalAll) * regionArea : 0;
+          const cityPop = regionTotalAll ? (cityTotal / regionTotalAll) * regionPop : 0;
+          const density = cityArea ? cityTotal / (cityArea / 1000) : 0;
+          const leader = selected.map(b => ({ brand: b, count: data.counts[b] || 0 }))
+            .sort((a, b) => b.count - a.count)[0] || { brand: "—", count: 0 };
+          const leaderShare = cityTotal ? leader.count / cityTotal : 0;
+          const peoplePerStore = cityPop && cityTotal ? cityPop / cityTotal : null;
+          const diversity = selected.filter(b => (data.counts[b] || 0) > 0).length;
+          const coverage = computeCoverageMetrics(cityTotal, cityArea, cityPop, diversity, density);
+          const leaderCell = leader.brand !== "—"
+            ? `<div class="brand-dot-cell"><span class="brand-dot" style="background:${BRAND_COLORS[leader.brand]||'#3B5BFE'};width:8px;height:8px"></span>${leader.brand}</div>`
+            : "—";
+          return `
+            <td class="num">${fmtInt(cityTotal)}</td>
+            <td class="num">${density ? density.toFixed(1) : "—"}</td>
+            <td>${leaderCell}</td>
+            <td class="num">${leaderShare ? fmtPct(leaderShare) : "—"}</td>
+            <td class="num">${peoplePerStore ? fmtInt(Math.round(peoplePerStore)) : "—"}</td>
+            <td class="num">${region ? fmtGBP(state.metrics.region_income_gdhi_per_head_2023[region] || 0) : "—"}</td>
+            <td class="num">${coverage.coveredPop !== null && coverage.coveredPop !== undefined ? fmtInt(Math.round(coverage.coveredPop)) : "—"}</td>
+            <td class="num">${coverage.coveragePct !== null && coverage.coveragePct !== undefined ? fmtPct(coverage.coveragePct) : "—"}</td>
+            <td class="num">${coverage.overlapIndex !== null && coverage.overlapIndex !== undefined ? coverage.overlapIndex.toFixed(2) : "—"}</td>
+          `;
+        })()}
       </tr>`).join("")}
   `;
 
