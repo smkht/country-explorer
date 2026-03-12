@@ -111,16 +111,18 @@
           <div class="rp-section-header">
             <span>Regional Coverage & Competitive Structure</span>
           </div>
+          <div class="control-group">
+            <label for="coverageViewSelect">Coverage metric</label>
+            <select id="coverageViewSelect">
+              <option value="coverage">Coverage %</option>
+              <option value="covered_pop">Covered population</option>
+              <option value="overlap">Overlap intensity</option>
+            </select>
+          </div>
           <div class="rp-footnote">Coverage is an estimated model based on store density, brand diversity, and population density. Overlap increases when estimated coverage areas exceed total region area.</div>
           <table class="table" id="regionTable"></table>
         </div>
 
-        <div class="rp-section" id="cityBreakdownSection">
-          <div class="rp-section-header">
-            <span>City Breakdown</span>
-          </div>
-          <table class="table" id="cityBreakdownTable"></table>
-        </div>
       </div>
 
       <!-- ====== REGIONAL ANALYTICS ====== -->
