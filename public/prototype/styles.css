@@ -118,16 +118,14 @@ body { font-family: var(--sans); background: var(--bg); color: var(--text); -web
 .toggle-switch input:checked + .toggle-slider::before { transform: translateX(16px); background: var(--accent); }
 
 /* ── Brand list ── */
-.brand-list { display: flex; flex-direction: column; gap: 3px; }
-.brand-item { display: flex; align-items: center; gap: 10px; padding: 7px 10px; border-radius: 8px; cursor: pointer; transition: background 0.12s; user-select: none; }
-.brand-item:hover { background: var(--panel2); }
-.brand-item.inactive { opacity: 0.4; }
-.brand-dot { width: 10px; height: 10px; border-radius: 999px; flex-shrink: 0; }
-.brand-name { font-size: 13px; font-weight: 600; flex: 1; }
-.brand-count { font-size: 12px; color: var(--muted); font-weight: 600; font-variant-numeric: tabular-nums; }
-.brand-check { width: 16px; height: 16px; border-radius: 4px; border: 1.5px solid var(--border); display: flex; align-items: center; justify-content: center; flex-shrink: 0; transition: all 0.12s; }
-.brand-item:not(.inactive) .brand-check { background: var(--accent); border-color: var(--accent); }
-.brand-item:not(.inactive) .brand-check::after { content: ''; display: block; width: 6px; height: 3px; border-left: 1.5px solid #fff; border-bottom: 1.5px solid #fff; transform: rotate(-45deg); margin-top: -1px; }
+.brand-list { display: flex; flex-wrap: wrap; gap: 6px; }
+.brand-pill { display: inline-flex; align-items: center; gap: 8px; padding: 6px 12px; border-radius: 999px; cursor: pointer; transition: all 0.12s; user-select: none; background: var(--panel2); border: 1px solid var(--border); }
+.brand-pill:hover { background: rgba(59,91,254,0.08); border-color: rgba(59,91,254,0.35); }
+.brand-pill.inactive { opacity: 0.45; }
+.brand-pill.active { background: rgba(59,91,254,0.12); border-color: rgba(59,91,254,0.45); }
+.brand-dot { width: 8px; height: 8px; border-radius: 999px; flex-shrink: 0; }
+.brand-name { font-size: 12px; font-weight: 700; }
+.brand-count { font-size: 11px; color: var(--muted); font-weight: 700; font-variant-numeric: tabular-nums; background: rgba(15, 19, 35, 0.06); padding: 2px 6px; border-radius: 999px; }
 
 /* ── Metric toggles ── */
 .metric-toggles { display: flex; gap: 0; border: 1px solid var(--border); border-radius: 8px; overflow: hidden; }

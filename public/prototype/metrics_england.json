@@ -133,5 +133,27 @@
     "South West (England)": 21.257329601735066,
     "West Midlands (England)": 48.600458581363576,
     "Yorkshire and The Humber": 31.411379013189777
+  },
+  "region_income_gdhi_per_head_2023": {
+    "North East (England)": 19977,
+    "North West (England)": 21543,
+    "Yorkshire and The Humber": 21027,
+    "East Midlands (England)": 21656,
+    "West Midlands (England)": 21141,
+    "East (England)": 25732,
+    "London": 35361,
+    "South East (England)": 28187,
+    "South West (England)": 24854
+  },
+  "region_population_2023": {
+    "North East (England)": 2711380,
+    "North West (England)": 7600126,
+    "Yorkshire and The Humber": 5594125,
+    "East Midlands (England)": 4991265,
+    "West Midlands (England)": 6085687,
+    "East (England)": 6468665,
+    "London": 8945309,
+    "South East (England)": 9482507,
+    "South West (England)": 5811259
   }
 }

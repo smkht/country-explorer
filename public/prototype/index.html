@@ -26,9 +26,6 @@
       <button class="sidebar-btn" data-tab="compare" title="Brand Compare">
         <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg>
       </button>
-      <button class="sidebar-btn" data-tab="export" title="Export">
-        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
-      </button>
     </nav>
     <div class="sidebar-bottom">
       <button class="sidebar-btn" title="Settings">
@@ -110,12 +107,19 @@
           <button class="rp-tab active" data-tab="overview">Overview</button>
           <button class="rp-tab" data-tab="deepreview">Regional Analytics</button>
           <button class="rp-tab" data-tab="compare">Compare</button>
-          <button class="rp-tab" data-tab="export">Export</button>
         </div>
       </div>
 
       <!-- ====== OVERVIEW ====== -->
       <div class="rp-content" id="overviewContent">
+
+        <!-- Brands section -->
+        <div class="rp-section" id="brandsSection">
+          <div class="rp-section-header">
+            <span>Brands</span>
+          </div>
+          <div id="brandList" class="brand-list"></div>
+        </div>
 
         <!-- KPIs -->
         <div class="rp-section" id="kpiSection">
@@ -137,19 +141,6 @@
               <div class="rp-kpi-label">London Share</div>
             </div>
           </div>
-        </div>
-
-        <!-- Brands section -->
-        <div class="rp-section" id="brandsSection">
-          <div class="rp-section-header">
-            <span>Brands</span>
-            <div class="rp-header-actions">
-              <button class="rp-link-btn" id="selectAllBrands">All</button>
-              <span class="rp-link-sep">·</span>
-              <button class="rp-link-btn" id="selectTop3Brands">Top 3</button>
-            </div>
-          </div>
-          <div id="brandList" class="brand-list"></div>
         </div>
 
         <!-- Metric -->
@@ -184,12 +175,12 @@
             </div>
           </div>
         </div>
-      </div>
 
-      <!-- ====== REGIONAL ANALYTICS ====== -->
-      <div class="rp-content hidden" id="deepreviewContent">
-        <div class="rp-section">
-          <p class="rp-desc">Region-first analytics with concrete store counts, density, and brand leadership.</p>
+        <div class="rp-section" id="regionListSection">
+          <div class="rp-section-header">
+            <span>All Regions</span>
+          </div>
+          <table class="table" id="regionListTable"></table>
         </div>
 
         <div class="rp-section" id="regionRankSection">
@@ -225,6 +216,13 @@
               <table class="table" id="regionDrilldownBrandTable"></table>
             </div>
           </div>
+        </div>
+      </div>
+
+      <!-- ====== REGIONAL ANALYTICS ====== -->
+      <div class="rp-content hidden" id="deepreviewContent">
+        <div class="rp-section">
+          <p class="rp-desc">Region-first analytics with concrete store counts, density, and brand leadership.</p>
         </div>
 
         <!-- Heatmap mode -->
@@ -341,28 +339,6 @@
         </div>
       </div>
 
-      <!-- ====== EXPORT ====== -->
-      <div class="rp-content hidden" id="exportContent">
-        <div class="rp-section">
-          <p class="rp-desc">Download the currently selected brands and region.</p>
-          <div class="export-buttons">
-            <button class="export-btn" id="exportCsv">
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
-              Download CSV
-            </button>
-            <button class="export-btn" id="exportGeojson">
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0118 0z"/><circle cx="12" cy="10" r="3"/></svg>
-              Download GeoJSON
-            </button>
-          </div>
-          <div class="export-info">
-            <div class="export-info-row"><span class="export-info-label">Brands:</span><span id="exportBrandsInfo">—</span></div>
-            <div class="export-info-row"><span class="export-info-label">Region:</span><span id="exportRegionInfo">All England</span></div>
-            <div class="export-info-row"><span class="export-info-label">Records:</span><span id="exportCountInfo">—</span></div>
-          </div>
-          <div class="rp-footnote">In production: scheduled exports, shareable links, and API access.</div>
-        </div>
-      </div>
     </div>
   </div>
 

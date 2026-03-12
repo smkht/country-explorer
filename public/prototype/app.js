@@ -174,6 +174,7 @@ const state = {
 
 const fmtInt = x => new Intl.NumberFormat("en-GB").format(x);
 const fmtPct = x => (x * 100).toFixed(1) + "%";
+const fmtGBP = x => new Intl.NumberFormat("en-GB", { style: "currency", currency: "GBP", maximumFractionDigits: 0 }).format(x);
 
 async function loadJSON(path) {
   const r = await fetch(path);
@@ -291,7 +292,6 @@ function setTab(tab) {
   document.getElementById("overviewContent").classList.toggle("hidden", tab !== "overview");
   document.getElementById("deepreviewContent").classList.toggle("hidden", tab !== "deepreview");
   document.getElementById("compareContent").classList.toggle("hidden", tab !== "compare");
-  document.getElementById("exportContent").classList.toggle("hidden", tab !== "export");
   if ((tab === "overview" || tab === "deepreview") && state.map) setTimeout(() => state.map.invalidateSize(), 100);
 }
 
@@ -299,21 +299,35 @@ function setTab(tab) {
 function buildBrandList() {
   const wrap = document.getElementById("brandList");
   wrap.innerHTML = "";
+  state.selectedBrands = new Set(state.metrics.brands);
+
+  const allEl = document.createElement("div");
+  allEl.className = "brand-pill active";
+  allEl.id = "brandAllPill";
+  allEl.innerHTML = `
+    <span class="brand-dot" style="background:linear-gradient(135deg,#3B5BFE,#22C1F1)"></span>
+    <span class="brand-name">All</span>
+    <span class="brand-count" data-brand="__all__">${fmtInt(Object.values(state.metrics.brand_totals).reduce((a, b) => a + b, 0))}</span>
+  `;
+  allEl.onclick = () => setAllBrands(state.metrics.brands);
+  wrap.appendChild(allEl);
+
   state.metrics.brands.forEach(b => {
-    state.selectedBrands.add(b);
     const total = state.metrics.brand_totals[b] || 0;
     const el = document.createElement("div");
-    el.className = "brand-item";
+    el.className = "brand-pill";
+    el.dataset.brand = b;
     el.innerHTML = `
       <span class="brand-dot" style="background:${BRAND_COLORS[b] || '#3B5BFE'}"></span>
       <span class="brand-name">${b}</span>
-      <span class="brand-count">${fmtInt(total)}</span>
-      <span class="brand-check"></span>
+      <span class="brand-count" data-brand="${b}">${fmtInt(total)}</span>
     `;
     el.onclick = () => {
       if (state.selectedBrands.has(b)) { state.selectedBrands.delete(b); el.classList.add("inactive"); }
       else { state.selectedBrands.add(b); el.classList.remove("inactive"); }
       if (state.selectedBrands.size === 0) { state.selectedBrands.add(b); el.classList.remove("inactive"); }
+      const allPill = document.getElementById("brandAllPill");
+      if (allPill) allPill.classList.toggle("active", state.selectedBrands.size === state.metrics.brands.length);
       refreshAll();
     };
     wrap.appendChild(el);
@@ -322,10 +336,13 @@ function buildBrandList() {
 
 function setAllBrands(brands) {
   state.selectedBrands = new Set(brands);
-  document.querySelectorAll(".brand-item").forEach(el => {
-    const name = el.querySelector(".brand-name").textContent;
+  document.querySelectorAll(".brand-pill").forEach(el => {
+    const name = el.dataset.brand;
+    if (!name) return;
     el.classList.toggle("inactive", !state.selectedBrands.has(name));
   });
+  const allPill = document.getElementById("brandAllPill");
+  if (allPill) allPill.classList.toggle("active", state.selectedBrands.size === state.metrics.brands.length);
   refreshAll();
 }
 
@@ -360,18 +377,37 @@ function buildBrandSelects() {
 function buildCitySelect(region) {
   const wrap = document.getElementById("citySelectorWrap");
   const sel = document.getElementById("citySelect");
-  sel.innerHTML = '<option value="">All Cities</option>';
+  const prevValue = sel.value;
+  sel.innerHTML = '<option value="">Top 10 Cities</option>';
 
   if (!region) { wrap.style.display = "none"; return; }
   wrap.style.display = "flex";
 
-  const cities = REGION_CITIES[region] || [];
+  const selected = selectedArr();
+  const cityCounts = {};
+  state.locationsGeojson.features.forEach(f => {
+    const p = f.properties;
+    if (p.region !== region || !selected.includes(p.brand)) return;
+    const city = (p.city || "Unknown").trim();
+    cityCounts[city] = (cityCounts[city] || 0) + 1;
+  });
+  const cities = Object.entries(cityCounts)
+    .map(([city, count]) => ({ city, count }))
+    .sort((a, b) => b.count - a.count)
+    .slice(0, 10);
+
   cities.forEach(c => {
     const opt = document.createElement("option");
-    opt.value = c.name;
-    opt.textContent = c.name;
+    opt.value = c.city;
+    opt.textContent = `${c.city} (${c.count})`;
     sel.appendChild(opt);
   });
+
+  if (prevValue && cities.some(c => c.city === prevValue)) {
+    sel.value = prevValue;
+  } else {
+    sel.value = "";
+  }
 }
 
 const selectedArr = () => Array.from(state.selectedBrands);
@@ -893,12 +929,18 @@ function rebuildLocationsLayer() {
 // ── Refresh ──
 function refreshBrandCounts() {
   const region = state.selectedRegion;
-  document.querySelectorAll(".brand-item").forEach(el => {
-    const name = el.querySelector(".brand-name").textContent;
+  let total = 0;
+  const regionCounts = region ? (state.metrics.region_brand_counts[region] || {}) : null;
+  state.metrics.brands.forEach(b => { total += region ? (regionCounts[b] || 0) : (state.metrics.brand_totals[b] || 0); });
+  const allCount = document.querySelector('.brand-count[data-brand="__all__"]');
+  if (allCount) allCount.textContent = fmtInt(total);
+
+  document.querySelectorAll(".brand-pill").forEach(el => {
+    const name = el.dataset.brand;
+    if (!name) return;
     const countEl = el.querySelector(".brand-count");
     if (region) {
-      const regionCounts = state.metrics.region_brand_counts[region] || {};
-      countEl.textContent = fmtInt(regionCounts[name] || 0);
+      countEl.textContent = fmtInt((regionCounts && regionCounts[name]) || 0);
     } else {
       countEl.textContent = fmtInt(state.metrics.brand_totals[name] || 0);
     }
@@ -909,12 +951,13 @@ function refreshAll() {
   if (state.country !== "england") return;
   refreshKPIs();
   refreshBrandCounts();
+  if (state.selectedRegion) buildCitySelect(state.selectedRegion);
   buildHexLayer();
   rebuildLocationsLayer();
   refreshRegionPanel();
+  refreshRegionList();
   refreshRegionalAnalytics();
   refreshCompareTab();
-  refreshExportInfo();
 }
 
 function refreshKPIs() {
@@ -1018,6 +1061,34 @@ function refreshRegionPanel() {
   });
 }
 
+function refreshRegionList() {
+  const selected = selectedArr();
+  const popByRegion = state.metrics.region_population_2023 || {};
+  const incomeByRegion = state.metrics.region_income_gdhi_per_head_2023 || {};
+  const rows = state.metrics.regions.map(region => {
+    const counts = state.metrics.region_brand_counts[region] || {};
+    let total = 0;
+    selected.forEach(b => total += (counts[b] || 0));
+    const area = state.metrics.region_area_km2[region] || 1;
+    const density = total / (area / 1000);
+    const population = popByRegion[region] || null;
+    const income = incomeByRegion[region] || null;
+    const peoplePerStore = population && total ? population / total : null;
+    return { region, total, density, population, income, peoplePerStore };
+  });
+
+  document.getElementById("regionListTable").innerHTML = `
+    <tr><th>Region</th><th class="num">Locations</th><th class="num">Density</th><th class="num">People / Store</th><th class="num">Income / Head</th></tr>
+    ${rows.map(r => `<tr style="${r.region === state.selectedRegion ? 'background:rgba(59,91,254,0.08);font-weight:700' : ''}">
+      <td>${r.region.replace(" (England)", "")}${r.region === state.selectedRegion ? ' ←' : ''}</td>
+      <td class="num">${fmtInt(r.total)}</td>
+      <td class="num">${r.density.toFixed(1)}</td>
+      <td class="num">${r.peoplePerStore ? fmtInt(Math.round(r.peoplePerStore)) : "—"}</td>
+      <td class="num">${r.income ? fmtGBP(r.income) : "—"}</td>
+    </tr>`).join("")}
+  `;
+}
+
 function refreshRegionalAnalytics() {
   const selected = selectedArr();
   const rows = state.metrics.regions.map(region => {
@@ -1114,22 +1185,30 @@ function refreshRegionalAnalytics() {
     }).join("")}
   `;
 
-  const feats = state.locationsGeojson.features.filter(f => f.properties.region === region && selected.includes(f.properties.brand));
-  const cityCounts = {};
-  feats.forEach(f => {
-    const c = (f.properties.city || "Unknown").trim();
-    cityCounts[c] = (cityCounts[c] || 0) + 1;
+  const cityBrand = {};
+  state.locationsGeojson.features.forEach(f => {
+    const p = f.properties;
+    if (p.region !== region || !selected.includes(p.brand)) return;
+    const city = (p.city || "Unknown").trim();
+    if (!cityBrand[city]) cityBrand[city] = { total: 0 };
+    cityBrand[city][p.brand] = (cityBrand[city][p.brand] || 0) + 1;
+    cityBrand[city].total++;
   });
-  const topCities = Object.entries(cityCounts).map(([city, count]) => ({ city, count }))
-    .sort((a, b) => b.count - a.count).slice(0, 10);
+  const topCities = Object.entries(cityBrand).sort((a, b) => b[1].total - a[1].total).slice(0, 10);
+  const brandCols = selected.slice(0, 4);
   const cityNullCount = (state.cityNullStores && state.cityNullStores[region] ? state.cityNullStores[region]._total : 0);
+  const colSpan = 2 + brandCols.length;
   const cityNotice = cityNullCount > 0
-    ? `<tr><td colspan=\"2\" style=\"padding:6px 8px;font-size:10px;color:var(--muted);background:var(--panel2);border-radius:6px;border:1px solid var(--border);line-height:1.4\">📐 <strong>Data quality:</strong> ${cityNullCount} stores have coordinates but no city name — included in map density but excluded from city-level analysis.</td></tr>`
-    : `<tr><td colspan=\"2\" style=\"padding:6px 8px;font-size:10px;color:var(--muted);background:var(--panel2);border-radius:6px;border:1px solid var(--border);line-height:1.4\">✅ <strong>Data quality:</strong> All stores have city names assigned.</td></tr>`;
+    ? `<tr><td colspan=\"${colSpan}\" style=\"padding:6px 8px;font-size:10px;color:var(--muted);background:var(--panel2);border-radius:6px;border:1px solid var(--border);line-height:1.4\">📐 <strong>Data quality:</strong> ${cityNullCount} stores have coordinates but no city name — included in map density but excluded from city-level analysis.</td></tr>`
+    : `<tr><td colspan=\"${colSpan}\" style=\"padding:6px 8px;font-size:10px;color:var(--muted);background:var(--panel2);border-radius:6px;border:1px solid var(--border);line-height:1.4\">✅ <strong>Data quality:</strong> All stores have city names assigned.</td></tr>`;
   document.getElementById("regionDrilldownCityTable").innerHTML = `
     ${cityNotice}
-    <tr><th>City</th><th class="num">Locations</th></tr>
-    ${topCities.map(r => `<tr><td><span class="city-link" data-city="${r.city}" data-region="${region}">${r.city}</span></td><td class="num">${fmtInt(r.count)}</td></tr>`).join("")}
+    <tr><th>City</th>${brandCols.map(b => `<th class="num" style="color:${BRAND_COLORS[b]}">${b.split("'")[0]}</th>`).join("")}<th class="num">Total</th></tr>
+    ${topCities.map(([city, data]) => `<tr>
+      <td><span class="city-link" data-city="${city}" data-region="${region}">${city}</span></td>
+      ${brandCols.map(b => `<td class="num">${data[b] || 0}</td>`).join("")}
+      <td class="num" style="font-weight:700">${data.total}</td>
+    </tr>`).join("")}
   `;
 
   document.querySelectorAll(".city-link").forEach(el => {
@@ -1446,42 +1525,6 @@ function refreshCompareRegionDeep(rows, region, regionLabel) {
   `;
 }
 
-function refreshExportInfo() {
-  const selected = selectedArr();
-  document.getElementById("exportBrandsInfo").textContent = selected.length === state.metrics.brands.length ? "All brands" : selected.join(", ");
-  document.getElementById("exportRegionInfo").textContent = state.selectedRegion ? state.selectedRegion.replace(" (England)", "") : "All England";
-  const feats = state.locationsGeojson.features.filter(f => selected.includes(f.properties.brand) && (!state.selectedRegion || f.properties.region === state.selectedRegion));
-  document.getElementById("exportCountInfo").textContent = fmtInt(feats.length);
-}
-
-// ── Export ──
-function exportFiltered(type) {
-  const selected = selectedArr();
-  const feats = state.locationsGeojson.features.filter(f => {
-    const p = f.properties;
-    return selected.includes(p.brand) && (!state.selectedRegion || p.region === state.selectedRegion);
-  });
-  if (type === "geojson") {
-    downloadBlob(new Blob([JSON.stringify({ type: "FeatureCollection", features: feats }, null, 2)], { type: "application/geo+json" }), `explorer_${state.selectedRegion || "england"}.geojson`);
-  } else {
-    const header = ["brand", "id", "name", "city", "postcode", "region", "lon", "lat"];
-    const lines = [header.join(",")];
-    feats.forEach(f => {
-      const p = f.properties;
-      const [lon, lat] = f.geometry.coordinates;
-      lines.push([p.brand, p.id, p.name, p.city, p.postcode, p.region, lon, lat].map(v => `"${String(v ?? "").replaceAll('"', '""')}"`).join(","));
-    });
-    downloadBlob(new Blob([lines.join("\n")], { type: "text/csv" }), `explorer_${state.selectedRegion || "england"}.csv`);
-  }
-}
-
-function downloadBlob(blob, filename) {
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement("a"); a.href = url; a.download = filename;
-  document.body.appendChild(a); a.click(); a.remove();
-  URL.revokeObjectURL(url);
-}
-
 // ── Wire UI ──
 function wireUI() {
   document.querySelectorAll(".sidebar-btn[data-tab]").forEach(b => b.addEventListener("click", () => setTab(b.dataset.tab)));
@@ -1558,14 +1601,6 @@ function wireUI() {
     buildHexLayer();
   });
 
-  document.getElementById("selectAllBrands").onclick = () => setAllBrands(state.metrics.brands);
-  document.getElementById("selectTop3Brands").onclick = () => {
-    const top = Object.entries(state.metrics.brand_totals).sort((a, b) => b[1] - a[1]).slice(0, 3).map(x => x[0]);
-    setAllBrands(top);
-  };
-
-  document.getElementById("exportCsv").onclick = () => exportFiltered("csv");
-  document.getElementById("exportGeojson").onclick = () => exportFiltered("geojson");
 }
 
 // ── Main ──
