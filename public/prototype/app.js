@@ -499,6 +499,7 @@ function initMap() {
 }
 
 function flyToRegion(region) {
+  if (!state.map) return;
   if (!region) {
     state.map.flyTo([ENGLAND_VIEW.lat, ENGLAND_VIEW.lon], ENGLAND_VIEW.zoom, { duration: 1 });
     return;
@@ -508,6 +509,7 @@ function flyToRegion(region) {
 }
 
 function flyToCity(cityName, region) {
+  if (!state.map) return;
   const cities = REGION_CITIES[region] || [];
   const city = cities.find(c => c.name === cityName);
   if (city) state.map.flyTo([city.lat, city.lon], 13, { duration: 1 });
@@ -1330,6 +1332,7 @@ function refreshRegionalAnalytics() {
 
 // Enhanced city fly — falls back to calculating centroid from data
 function flyToCityOrData(cityName, region) {
+  if (!state.map) return;
   const cities = REGION_CITIES[region] || [];
   const city = cities.find(c => c.name.toLowerCase() === cityName.toLowerCase());
   if (city) {
@@ -1815,9 +1818,9 @@ async function main() {
     computeUnlocatedStores();
     buildBrandList();
     buildBrandSelects();
+    initMap();
     setCountry("england");
     wireUI();
-    initMap();
     refreshAll();
   } catch (err) {
     console.error(err);
