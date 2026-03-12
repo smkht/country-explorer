@@ -970,6 +970,16 @@ function buildCompareHexLayer(baseHexes, compareBrand, bounds, cellSize) {
     { type: "FeatureCollection", features: overlayFeatures },
     {
       style: f => {
+        const inRegion = !state.selectedRegion || fastRegionLookup(f.properties._cx, f.properties._cy) === state.selectedRegion;
+        if (!inRegion) {
+          return {
+            fillColor: "transparent",
+            fillOpacity: 0,
+            color: "transparent",
+            weight: 0,
+            opacity: 0
+          };
+        }
         const s = f.properties.coverState;
         if (s === "shared") {
           return {
@@ -1059,6 +1069,14 @@ function buildHexLayer() {
 
   // Bin points to hexes using fast spatial hash (replaces per-hex pointsWithinPolygon)
   const hexPoints = isHeatmap ? binPointsToHexes(hexGrid, locations) : null;
+
+  function isHexInSelectedRegion(hex) {
+    if (!state.selectedRegion) return true;
+    const cx = hex.properties?._cx ?? hex._cx;
+    const cy = hex.properties?._cy ?? hex._cy;
+    if (cx == null || cy == null) return false;
+    return fastRegionLookup(cx, cy) === state.selectedRegion;
+  }
 
   if (isHeatmap) {
     const competitors = state.compareMode === "all"
@@ -1159,6 +1177,16 @@ function buildHexLayer() {
         { type: "FeatureCollection", features: displayHexes },
         {
           style: f => {
+            const inRegion = isHexInSelectedRegion(f);
+            if (state.selectedRegion && !inRegion) {
+              return {
+                fillColor: "transparent",
+                fillOpacity: 0,
+                color: "transparent",
+                weight: 0,
+                opacity: 0
+              };
+            }
             const covered = !!f.properties.isCovered;
             const stateFill = covered
               ? hexFillCoverageMode(
@@ -1252,19 +1280,31 @@ function buildHexLayer() {
       state.hexLayer = L.geoJSON(
         { type: "FeatureCollection", features: hexGrid.features },
         {
-          style: f => ({
-            fillColor: hexFillCoverageMode(
-              f.properties.displayValue,
-              maxValue,
-              state.coverageView,
-              f.properties.estPop,
-              maxPop
-            ),
-            fillOpacity: 1,
-            weight: (f.properties.coveragePct || 0) > 0.10 ? 0 : 0.6,
-            color: (f.properties.coveragePct || 0) > 0.10 ? "transparent" : COMPARE_LAYER_STYLE.noCoverageStroke,
-            opacity: 1
-          })
+          style: f => {
+            const inRegion = isHexInSelectedRegion(f);
+            if (state.selectedRegion && !inRegion) {
+              return {
+                fillColor: "transparent",
+                fillOpacity: 0,
+                color: "transparent",
+                weight: 0,
+                opacity: 0
+              };
+            }
+            return {
+              fillColor: hexFillCoverageMode(
+                f.properties.displayValue,
+                maxValue,
+                state.coverageView,
+                f.properties.estPop,
+                maxPop
+              ),
+              fillOpacity: 1,
+              weight: (f.properties.coveragePct || 0) > 0.10 ? 0 : 0.6,
+              color: (f.properties.coveragePct || 0) > 0.10 ? "transparent" : COMPARE_LAYER_STYLE.noCoverageStroke,
+              opacity: 1
+            };
+          }
         }
       ).addTo(state.map);
 
@@ -1330,22 +1370,22 @@ function rebuildLocationsLayer() {
   const selected = selectedArr();
   const brandSet = new Set(selected);
   const cityFilter = state.selectedCity;
-  const regionFilter = state.selectedRegion;
+  const effectiveRegionFilter = state.selectedRegion || null;
   const showDots = selected.length > 0 && selected.length <= 3;
   const zoom = state.map.getZoom();
 
   let feats;
-  if (!regionFilter && !cityFilter) {
+  if (!effectiveRegionFilter && !cityFilter) {
     feats = getPointsInBounds(state.map.getBounds().pad(0.2), brandSet, null);
-  } else if (showDots && !regionFilter) {
+  } else if (showDots && !effectiveRegionFilter) {
     feats = getPointsInBounds(state.map.getBounds().pad(0.15), brandSet, null);
-  } else if (zoom >= 11 && !regionFilter) {
+  } else if (zoom >= 11 && !effectiveRegionFilter) {
     feats = getPointsInBounds(state.map.getBounds().pad(0.05), brandSet, null);
   } else {
     feats = getPointsInBounds(
-      regionFilter ? state.map.getBounds().pad(0.1) : state.map.getBounds().pad(showDots ? 0.15 : 0.05),
+      effectiveRegionFilter ? state.map.getBounds().pad(0.1) : state.map.getBounds().pad(showDots ? 0.15 : 0.05),
       brandSet,
-      regionFilter
+      effectiveRegionFilter
     );
     if (cityFilter) {
       const cityFeats = feats.filter(f => (f.properties.city || "").trim().toLowerCase() === cityFilter.toLowerCase());
