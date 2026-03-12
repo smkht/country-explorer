@@ -262,7 +262,7 @@ function setCountry(country) {
   document.getElementById("regionSelect").disabled = !isEngland;
   document.getElementById("mapLegend").classList.toggle("hidden", !isEngland);
 
-  ["kpiSection", "brandsSection", "metricSection", "regionDetailSection", "heatmapSection", "regionRankSection", "regionDrilldownSection", "deepreviewContent"]
+  ["kpiSection", "brandsSection", "regionDetailSection", "heatmapSection", "regionRankSection", "regionDrilldownSection", "deepreviewContent"]
     .forEach(id => {
       const el = document.getElementById(id);
       if (!el) return;
@@ -291,7 +291,6 @@ function setTab(tab) {
   document.querySelectorAll(".rp-tab").forEach(b => b.classList.toggle("active", b.dataset.tab === tab));
   document.getElementById("overviewContent").classList.toggle("hidden", tab !== "overview");
   document.getElementById("deepreviewContent").classList.toggle("hidden", tab !== "deepreview");
-  document.getElementById("compareContent").classList.toggle("hidden", tab !== "compare");
   if ((tab === "overview" || tab === "deepreview") && state.map) setTimeout(() => state.map.invalidateSize(), 100);
 }
 
@@ -876,19 +875,21 @@ function rebuildLocationsLayer() {
   if (state.locationsLayer) { state.locationsLayer.remove(); state.locationsLayer = null; }
   if (state.country !== "england") return;
 
-  const zoom = state.map.getZoom();
-
   const selected = selectedArr();
   const brandSet = new Set(selected);
   const cityFilter = state.selectedCity;
   const regionFilter = state.selectedRegion;
+  const showDots = selected.length > 0 && selected.length <= 3;
+  const zoom = state.map.getZoom();
 
   let feats;
-  if (zoom >= 11 && !regionFilter) {
+  if (showDots && !regionFilter) {
+    feats = getPointsInBounds(state.map.getBounds().pad(0.15), brandSet, null);
+  } else if (zoom >= 11 && !regionFilter) {
     feats = getPointsInBounds(state.map.getBounds().pad(0.05), brandSet, null);
   } else {
     feats = getPointsInBounds(
-      regionFilter ? state.map.getBounds().pad(0.1) : state.map.getBounds().pad(0.05),
+      regionFilter ? state.map.getBounds().pad(0.1) : state.map.getBounds().pad(showDots ? 0.15 : 0.05),
       brandSet,
       regionFilter
     );
@@ -898,6 +899,7 @@ function rebuildLocationsLayer() {
     }
   }
 
+  if (!showDots && zoom < 11 && !regionFilter) return;
   if (feats.length === 0) return;
 
   const maxMarkers = zoom < 11 ? 6000 : 3000;
@@ -924,6 +926,7 @@ function rebuildLocationsLayer() {
       layer.bindPopup(`<strong>${p.brand}</strong><br/>${p.name || ""}<br/><span style="color:#6b7394">${p.city || ""} ${p.postcode || ""}</span>`);
     }
   }).addTo(state.map);
+  state.locationsLayer.bringToFront();
 }
 
 // ── Refresh ──
@@ -963,27 +966,45 @@ function refreshAll() {
 function refreshKPIs() {
   const selected = selectedArr();
   const regionFilter = state.selectedRegion;
+  const cityFilter = state.selectedCity;
   let total = 0, london = 0, regionsCovered = 0;
   let bestRegion = null, bestVal = -1;
 
-  const regionsToCheck = regionFilter ? [regionFilter] : state.metrics.regions;
+  if (cityFilter) {
+    const cityCount = state.locationsGeojson.features.filter(f => {
+      const p = f.properties;
+      if (regionFilter && p.region !== regionFilter) return false;
+      if ((p.city || "").trim().toLowerCase() !== cityFilter.toLowerCase()) return false;
+      return selected.includes(p.brand);
+    }).length;
+    total = cityCount;
+    regionsCovered = cityCount > 0 ? 1 : 0;
+    bestRegion = regionFilter || "—";
+    london = regionFilter === "London" ? cityCount : 0;
+  } else {
+    const regionsToCheck = regionFilter ? [regionFilter] : state.metrics.regions;
 
-  regionsToCheck.forEach(r => {
-    const counts = state.metrics.region_brand_counts[r] || {};
-    let t = 0;
-    selected.forEach(b => t += (counts[b] || 0));
-    total += t;
-    if (r === "London") london = t;
-    if (t > 0) regionsCovered++;
-    const v = state.metric === "count" ? t : t / ((state.metrics.region_area_km2[r] || 1) / 1000);
-    if (v > bestVal) { bestVal = v; bestRegion = r; }
-  });
+    regionsToCheck.forEach(r => {
+      const counts = state.metrics.region_brand_counts[r] || {};
+      let t = 0;
+      selected.forEach(b => t += (counts[b] || 0));
+      total += t;
+      if (r === "London") london = t;
+      if (t > 0) regionsCovered++;
+      const v = state.metric === "count" ? t : t / ((state.metrics.region_area_km2[r] || 1) / 1000);
+      if (v > bestVal) { bestVal = v; bestRegion = r; }
+    });
+  }
 
   const totalRegions = regionFilter ? 1 : 9;
   document.getElementById("kpiTotal").textContent = fmtInt(total);
   document.getElementById("kpiRegions").textContent = regionFilter ? `1/1` : `${regionsCovered}/9`;
   document.getElementById("kpiDense").textContent = (bestRegion || "—").replace(" (England)", "");
-  document.getElementById("kpiLondonShare").textContent = total ? fmtPct(london / total) : "—";
+  if (cityFilter && regionFilter !== "London") {
+    document.getElementById("kpiLondonShare").textContent = "—";
+  } else {
+    document.getElementById("kpiLondonShare").textContent = total ? fmtPct(london / total) : "—";
+  }
 }
 
 function refreshRegionPanel() {
@@ -1246,47 +1267,79 @@ function flyToCityOrData(cityName, region) {
 function refreshCompareTab() {
   const selected = selectedArr();
   const region = state.selectedRegion;
+  const city = state.selectedCity;
   const regionLabel = region ? region.replace(" (England)", "") : null;
-  const scopeLabel = regionLabel || "England";
-  const allBrands = state.metrics.brands;
+  const scopeType = city ? "city" : region ? "region" : "country";
+  const scopeLabel = scopeType === "city"
+    ? `${city}${regionLabel ? `, ${regionLabel}` : ""}`
+    : (regionLabel || "England");
+  const cityCounts = {};
+  if (scopeType === "city") {
+    state.locationsGeojson.features.forEach(f => {
+      const p = f.properties;
+      if (!region || p.region !== region) return;
+      if ((p.city || "").trim().toLowerCase() !== city.toLowerCase()) return;
+      if (!selected.includes(p.brand)) return;
+      cityCounts[p.brand] = (cityCounts[p.brand] || 0) + 1;
+    });
+  }
 
-  // Update titles with region context
-  document.getElementById("compareDesc").textContent = regionLabel
-    ? `Head-to-head brand analysis in ${regionLabel} — market share, regional presence, and concentration stats.`
-    : `Head-to-head brand analysis with market share, regional presence, and concentration stats.`;
-  document.getElementById("compareShareTitle").textContent = `📊 Market Share in ${scopeLabel}`;
-  document.getElementById("compareLeaderTitle").textContent = `🏆 Brand Leaderboard — ${scopeLabel}`;
-  document.getElementById("compareMatrixTitle").textContent = regionLabel ? `🗺️ City Breakdown — ${regionLabel}` : `🗺️ Regional Presence Matrix`;
-  document.getElementById("compareConcentrationTitle").textContent = `🎯 Concentration Analysis — ${scopeLabel}`;
-
-  // Calculate totals scoped to region if selected
   function brandTotal(b) {
-    if (!region) return state.metrics.brand_totals[b] || 0;
-    return (state.metrics.region_brand_counts[region] || {})[b] || 0;
+    if (scopeType === "country") return state.metrics.brand_totals[b] || 0;
+    if (scopeType === "region") return (state.metrics.region_brand_counts[region] || {})[b] || 0;
+    return cityCounts[b] || 0;
   }
 
   const totalAll = selected.reduce((s, b) => s + brandTotal(b), 0);
+  const nationalTotalAll = selected.reduce((s, b) => s + (state.metrics.brand_totals[b] || 0), 0);
+  const regionTotalAll = region ? selected.reduce((s, b) => s + ((state.metrics.region_brand_counts[region] || {})[b] || 0), 0) : 0;
+
+  // Update titles with scope context
+  document.getElementById("compareDesc").textContent = scopeType === "city"
+    ? `Head-to-head brand analysis in ${scopeLabel} — market share, local mix, and competitive structure.`
+    : regionLabel
+      ? `Head-to-head brand analysis in ${regionLabel} — market share, regional presence, and concentration stats.`
+      : `Head-to-head brand analysis with market share, regional presence, and concentration stats.`;
+  document.getElementById("compareShareTitle").textContent = `📊 Market Share in ${scopeLabel}`;
+  document.getElementById("compareLeaderTitle").textContent = `🏆 Brand Leaderboard — ${scopeLabel}`;
+  document.getElementById("compareMatrixTitle").textContent = scopeType === "city"
+    ? `🗺️ City Mix — ${scopeLabel}`
+    : regionLabel
+      ? `🗺️ City Breakdown — ${regionLabel}`
+      : `🗺️ Regional Presence Matrix`;
+  document.getElementById("compareConcentrationTitle").textContent = `🎯 Concentration Analysis — ${scopeLabel}`;
 
   const rows = selected.map(b => {
     const total = brandTotal(b);
-    const london = (state.metrics.region_brand_counts["London"] || {})[b] || 0;
-    const regionShares = state.metrics.regions.map(r => {
-      const c = (state.metrics.region_brand_counts[r] || {})[b] || 0;
-      const nationalTotal = state.metrics.brand_totals[b] || 1;
-      return { region: r, label: r.replace(" (England)", ""), count: c, share: nationalTotal ? c / nationalTotal : 0 };
-    }).sort((a, b) => b.count - a.count);
-    const top3Share = regionShares.slice(0, 3).reduce((s, r) => s + r.count, 0) / (state.metrics.brand_totals[b] || 1);
+    const share = totalAll ? total / totalAll : 0;
+    const natShare = nationalTotalAll ? (state.metrics.brand_totals[b] || 0) / nationalTotalAll : 0;
+    const regionShare = regionTotalAll ? ((state.metrics.region_brand_counts[region] || {})[b] || 0) / regionTotalAll : 0;
     const regionCounts = {};
-    state.metrics.regions.forEach(r => { regionCounts[r] = (state.metrics.region_brand_counts[r] || {})[b] || 0; });
-    return { brand: b, total, share: totalAll ? total / totalAll : 0, londonShare: (state.metrics.brand_totals[b] || 1) ? london / (state.metrics.brand_totals[b] || 1) : 0, top1: regionShares[0], top3Share, regionCounts, regionShares };
+    let top1 = null;
+    let regionShares = [];
+    let top3Share = 0;
+    let londonShare = 0;
+    if (scopeType === "country") {
+      const london = (state.metrics.region_brand_counts["London"] || {})[b] || 0;
+      regionShares = state.metrics.regions.map(r => {
+        const c = (state.metrics.region_brand_counts[r] || {})[b] || 0;
+        const nationalTotal = state.metrics.brand_totals[b] || 1;
+        return { region: r, label: r.replace(" (England)", ""), count: c, share: nationalTotal ? c / nationalTotal : 0 };
+      }).sort((a, b) => b.count - a.count);
+      top1 = regionShares[0];
+      top3Share = regionShares.slice(0, 3).reduce((s, r) => s + r.count, 0) / (state.metrics.brand_totals[b] || 1);
+      londonShare = (state.metrics.brand_totals[b] || 1) ? london / (state.metrics.brand_totals[b] || 1) : 0;
+      state.metrics.regions.forEach(r => { regionCounts[r] = (state.metrics.region_brand_counts[r] || {})[b] || 0; });
+    }
+    return { brand: b, total, share, natShare, regionShare, top1, top3Share, londonShare, regionCounts, regionShares };
   }).sort((a, b) => b.total - a.total);
 
   // ── KPIs ──
   const leader = rows[0];
   document.getElementById("compareKpis").innerHTML = `
-    <div class="rp-kpi-card"><div class="rp-kpi-value">${fmtInt(totalAll)}</div><div class="rp-kpi-label">Locations${regionLabel ? ' in ' + regionLabel : ''}</div></div>
+    <div class="rp-kpi-card"><div class="rp-kpi-value">${fmtInt(totalAll)}</div><div class="rp-kpi-label">Locations in ${scopeLabel}</div></div>
     <div class="rp-kpi-card"><div class="rp-kpi-value">${selected.length}</div><div class="rp-kpi-label">Brands Compared</div></div>
-    <div class="rp-kpi-card"><div class="rp-kpi-value">${leader ? leader.brand.split("'")[0] : '—'}</div><div class="rp-kpi-label">${regionLabel ? regionLabel + ' ' : ''}Leader</div></div>
+    <div class="rp-kpi-card"><div class="rp-kpi-value">${leader ? leader.brand.split("'")[0] : '—'}</div><div class="rp-kpi-label">${scopeLabel} Leader</div></div>
     <div class="rp-kpi-card"><div class="rp-kpi-value">${leader ? fmtPct(leader.share) : '—'}</div><div class="rp-kpi-label">Leader Share</div></div>
   `;
 
@@ -1306,26 +1359,7 @@ function refreshCompareTab() {
   }).join("");
 
   // ── Leaderboard Table ──
-  if (region) {
-    // Region-scoped: show regional stats
-    document.getElementById("compareTable").innerHTML = `
-      <tr><th>#</th><th>Brand</th><th class="num">In ${regionLabel}</th><th class="num">Share</th><th class="num">National</th><th class="num">Vs National</th></tr>
-      ${rows.map((r, i) => {
-        const natTotal = state.metrics.brand_totals[r.brand] || 0;
-        const natShare = natTotal / allBrands.reduce((s, b) => s + (state.metrics.brand_totals[b] || 0), 0);
-        const diff = r.share - natShare;
-        const diffColor = diff > 0 ? '#43A047' : diff < -0.02 ? '#E53935' : 'var(--muted)';
-        return `<tr>
-          <td style="color:var(--muted);font-weight:700">${i + 1}</td>
-          <td><div class="brand-dot-cell"><span class="brand-dot" style="background:${BRAND_COLORS[r.brand]||'#3B5BFE'};width:8px;height:8px"></span><strong>${r.brand}</strong></div></td>
-          <td class="num">${fmtInt(r.total)}</td>
-          <td class="num">${fmtPct(r.share)}</td>
-          <td class="num" style="color:var(--muted)">${fmtInt(natTotal)}</td>
-          <td class="num" style="color:${diffColor};font-weight:700">${diff > 0 ? '+' : ''}${(diff * 100).toFixed(1)}pp</td>
-        </tr>`;
-      }).join("")}
-    `;
-  } else {
+  if (scopeType === "country") {
     document.getElementById("compareTable").innerHTML = `
       <tr><th>#</th><th>Brand</th><th class="num">Total</th><th class="num">Share</th><th class="num">London %</th><th>Strongest</th></tr>
       ${rows.map((r, i) => `<tr>
@@ -1334,13 +1368,45 @@ function refreshCompareTab() {
         <td class="num">${fmtInt(r.total)}</td>
         <td class="num">${fmtPct(r.share)}</td>
         <td class="num">${fmtPct(r.londonShare)}</td>
-        <td style="font-size:11px;color:var(--muted)">${r.top1.label} (${fmtPct(r.top1.share)})</td>
+        <td style="font-size:11px;color:var(--muted)">${r.top1 ? `${r.top1.label} (${fmtPct(r.top1.share)})` : "—"}</td>
       </tr>`).join("")}
+    `;
+  } else if (scopeType === "region") {
+    document.getElementById("compareTable").innerHTML = `
+      <tr><th>#</th><th>Brand</th><th class="num">In ${regionLabel}</th><th class="num">Share</th><th class="num">National</th><th class="num">Vs National</th></tr>
+      ${rows.map((r, i) => {
+        const diff = r.share - r.natShare;
+        const diffColor = diff > 0 ? '#43A047' : diff < -0.02 ? '#E53935' : 'var(--muted)';
+        return `<tr>
+          <td style="color:var(--muted);font-weight:700">${i + 1}</td>
+          <td><div class="brand-dot-cell"><span class="brand-dot" style="background:${BRAND_COLORS[r.brand]||'#3B5BFE'};width:8px;height:8px"></span><strong>${r.brand}</strong></div></td>
+          <td class="num">${fmtInt(r.total)}</td>
+          <td class="num">${fmtPct(r.share)}</td>
+          <td class="num" style="color:var(--muted)">${fmtPct(r.natShare)}</td>
+          <td class="num" style="color:${diffColor};font-weight:700">${diff > 0 ? '+' : ''}${(diff * 100).toFixed(1)}pp</td>
+        </tr>`;
+      }).join("")}
+    `;
+  } else {
+    document.getElementById("compareTable").innerHTML = `
+      <tr><th>#</th><th>Brand</th><th class="num">In ${city}</th><th class="num">Share</th><th class="num">Region</th><th class="num">Vs Region</th></tr>
+      ${rows.map((r, i) => {
+        const diff = r.share - r.regionShare;
+        const diffColor = diff > 0 ? '#43A047' : diff < -0.02 ? '#E53935' : 'var(--muted)';
+        return `<tr>
+          <td style="color:var(--muted);font-weight:700">${i + 1}</td>
+          <td><div class="brand-dot-cell"><span class="brand-dot" style="background:${BRAND_COLORS[r.brand]||'#3B5BFE'};width:8px;height:8px"></span><strong>${r.brand}</strong></div></td>
+          <td class="num">${fmtInt(r.total)}</td>
+          <td class="num">${fmtPct(r.share)}</td>
+          <td class="num" style="color:var(--muted)">${fmtPct(r.regionShare)}</td>
+          <td class="num" style="color:${diffColor};font-weight:700">${diff > 0 ? '+' : ''}${(diff * 100).toFixed(1)}pp</td>
+        </tr>`;
+      }).join("")}
     `;
   }
 
   // ── Regional Presence Matrix / City Breakdown ──
-  if (region) {
+  if (scopeType === "region") {
     // Show city breakdown for this region instead of regional matrix
     const cityData = {};
     state.locationsGeojson.features.forEach(f => {
@@ -1367,12 +1433,12 @@ function refreshCompareTab() {
     const cityNotice2 = cityNullCount2 > 0 ? `<div style="font-size:10px;color:var(--muted);padding:4px 8px;background:var(--panel2);border-radius:6px;border:1px solid var(--border);margin-bottom:8px;line-height:1.4">📐 <strong>Data quality:</strong> ${cityNullCount2} stores have coordinates but no city name — included in map density but excluded from city-level analysis.</div>` : `<div style="font-size:10px;color:var(--muted);padding:4px 8px;background:var(--panel2);border-radius:6px;border:1px solid var(--border);margin-bottom:8px;line-height:1.4">✅ <strong>Data quality:</strong> All stores have city names assigned.</div>`;
     document.getElementById("compareMatrix").innerHTML = `
       ${cityNotice2}
-      <table>
+      <table class="table">
         <tr><th>City</th>${selected.map(b => `<th><span style="color:${BRAND_COLORS[b]||'#3B5BFE'}">${b.split("'")[0]}</span></th>`).join("")}<th>Total</th></tr>
         ${cityRows.join("")}
       </table>
     `;
-  } else {
+  } else if (scopeType === "country") {
     const shortRegions = state.metrics.regions.map(r => r.replace(" (England)", "").replace("Yorkshire and The Humber", "Yorks"));
     const matrixRows = rows.map(r => {
       const cells = state.metrics.regions.map(reg => {
@@ -1386,49 +1452,80 @@ function refreshCompareTab() {
       return `<tr><td><div class="brand-dot-cell"><span class="brand-dot" style="background:${BRAND_COLORS[r.brand]||'#3B5BFE'};width:6px;height:6px"></span>${r.brand}</div></td>${cells.join("")}</tr>`;
     });
     document.getElementById("compareMatrix").innerHTML = `
-      <table>
+      <table class="table">
         <tr><th></th>${shortRegions.map(r => `<th>${r}</th>`).join("")}</tr>
         ${matrixRows.join("")}
+      </table>
+    `;
+  } else {
+    const cityRows = rows.map(r => `<tr>
+      <td><div class="brand-dot-cell"><span class="brand-dot" style="background:${BRAND_COLORS[r.brand]||'#3B5BFE'};width:7px;height:7px"></span>${r.brand}</div></td>
+      <td class="num">${fmtInt(r.total)}</td>
+      <td class="num">${fmtPct(r.share)}</td>
+    </tr>`).join("");
+    document.getElementById("compareMatrix").innerHTML = `
+      <table class="table">
+        <tr><th>Brand</th><th class="num">Count</th><th class="num">Share</th></tr>
+        ${cityRows}
       </table>
     `;
   }
 
   // ── Concentration Analysis ──
-  document.getElementById("compareConcentration").innerHTML = `
-    <tr><th>Brand</th><th class="num">Top 3 Regions %</th><th class="num">London Lean</th><th>Profile</th></tr>
-    ${rows.map(r => {
-      const profile = r.top3Share > 0.55 ? 'Concentrated' : r.top3Share > 0.45 ? 'Balanced' : 'Distributed';
-      const profileColor = profile === 'Concentrated' ? '#E53935' : profile === 'Balanced' ? '#FF9800' : '#43A047';
-      return `<tr>
-        <td><div class="brand-dot-cell"><span class="brand-dot" style="background:${BRAND_COLORS[r.brand]||'#3B5BFE'};width:8px;height:8px"></span>${r.brand}</div></td>
-        <td class="num">${fmtPct(r.top3Share)}</td>
-        <td class="num">${r.londonShare > 0.2 ? '🔥 High' : r.londonShare > 0.12 ? '⚡ Medium' : '✅ Low'}</td>
-        <td><span style="color:${profileColor};font-weight:700;font-size:11px">${profile}</span></td>
-      </tr>`;
-    }).join("")}
-  `;
+  if (scopeType === "country") {
+    document.getElementById("compareConcentration").innerHTML = `
+      <tr><th>Brand</th><th class="num">Top 3 Regions %</th><th class="num">London Lean</th><th>Profile</th></tr>
+      ${rows.map(r => {
+        const profile = r.top3Share > 0.55 ? 'Concentrated' : r.top3Share > 0.45 ? 'Balanced' : 'Distributed';
+        const profileColor = profile === 'Concentrated' ? '#E53935' : profile === 'Balanced' ? '#FF9800' : '#43A047';
+        return `<tr>
+          <td><div class="brand-dot-cell"><span class="brand-dot" style="background:${BRAND_COLORS[r.brand]||'#3B5BFE'};width:8px;height:8px"></span>${r.brand}</div></td>
+          <td class="num">${fmtPct(r.top3Share)}</td>
+          <td class="num">${r.londonShare > 0.2 ? '🔥 High' : r.londonShare > 0.12 ? '⚡ Medium' : '✅ Low'}</td>
+          <td><span style="color:${profileColor};font-weight:700;font-size:11px">${profile}</span></td>
+        </tr>`;
+      }).join("")}
+    `;
+  } else {
+    const benchmarkLabel = scopeType === "city" ? "Vs Region" : "Vs National";
+    document.getElementById("compareConcentration").innerHTML = `
+      <tr><th>Brand</th><th class="num">Share</th><th class="num">${benchmarkLabel}</th><th>Position</th></tr>
+      ${rows.map(r => {
+        const diff = scopeType === "city" ? (r.share - r.regionShare) : (r.share - r.natShare);
+        const position = r === leader ? "Leader" : r.share > 0.2 ? "Strong" : "Challenger";
+        const diffColor = diff > 0 ? '#43A047' : diff < -0.02 ? '#E53935' : 'var(--muted)';
+        return `<tr>
+          <td><div class="brand-dot-cell"><span class="brand-dot" style="background:${BRAND_COLORS[r.brand]||'#3B5BFE'};width:8px;height:8px"></span>${r.brand}</div></td>
+          <td class="num">${fmtPct(r.share)}</td>
+          <td class="num" style="color:${diffColor};font-weight:700">${diff > 0 ? '+' : ''}${(diff * 100).toFixed(1)}pp</td>
+          <td><span style="font-weight:700;font-size:11px">${position}</span></td>
+        </tr>`;
+      }).join("")}
+    `;
+  }
 
   // ── Key Insights (auto-generated, region-aware) ──
   const insights = [];
   if (leader) {
-    insights.push(`<div class="insight-card"><span class="insight-icon">👑</span><strong>${leader.brand}</strong> leads ${regionLabel ? 'in ' + regionLabel : ''} with ${fmtInt(leader.total)} locations (${fmtPct(leader.share)} share)${!regionLabel ? ', strongest in ' + leader.top1.label : ''}.</div>`);
+    const leadScope = scopeType === "country" ? "" : `in ${scopeLabel}`;
+    const strongest = scopeType === "country" && leader.top1 ? `, strongest in ${leader.top1.label}` : "";
+    insights.push(`<div class="insight-card"><span class="insight-icon">👑</span><strong>${leader.brand}</strong> leads ${leadScope} with ${fmtInt(leader.total)} locations (${fmtPct(leader.share)} share)${strongest}.</div>`);
   }
   const smallest = rows[rows.length - 1];
   if (smallest && rows.length > 1) {
-    insights.push(`<div class="insight-card"><span class="insight-icon">📉</span><strong>${smallest.brand}</strong> has the smallest footprint${regionLabel ? ' in ' + regionLabel : ''} at ${fmtInt(smallest.total)} locations.</div>`);
+    const scopeText = scopeType === "country" ? "" : ` in ${scopeLabel}`;
+    insights.push(`<div class="insight-card"><span class="insight-icon">📉</span><strong>${smallest.brand}</strong> has the smallest footprint${scopeText} at ${fmtInt(smallest.total)} locations.</div>`);
   }
-  if (!region) {
+  if (scopeType === "country") {
     const highLondon = rows.filter(r => r.londonShare > 0.18);
     if (highLondon.length > 0) {
       insights.push(`<div class="insight-card"><span class="insight-icon">🏙️</span>${highLondon.map(r => `<strong>${r.brand}</strong>`).join(" and ")} have high London concentration (${highLondon.map(r => fmtPct(r.londonShare)).join(", ")} of their total footprint).</div>`);
     }
   }
-  if (region) {
+  if (scopeType === "region") {
     // Region-specific insight: who's over/under-indexed here
-    const natTotalAll = allBrands.reduce((s, b) => s + (state.metrics.brand_totals[b] || 0), 0);
     rows.forEach(r => {
-      const natShare = (state.metrics.brand_totals[r.brand] || 0) / natTotalAll;
-      const diff = r.share - natShare;
+      const diff = r.share - r.natShare;
       if (diff > 0.03) {
         insights.push(`<div class="insight-card"><span class="insight-icon">📈</span><strong>${r.brand}</strong> is above national share in ${regionLabel} by +${(diff * 100).toFixed(1)}pp.</div>`);
       } else if (diff < -0.03) {
@@ -1436,19 +1533,56 @@ function refreshCompareTab() {
       }
     });
   }
+  if (scopeType === "city") {
+    rows.forEach(r => {
+      const diff = r.share - r.regionShare;
+      if (diff > 0.05) {
+        insights.push(`<div class="insight-card"><span class="insight-icon">📈</span><strong>${r.brand}</strong> over-indexes in ${city} vs region by +${(diff * 100).toFixed(1)}pp.</div>`);
+      } else if (diff < -0.05) {
+        insights.push(`<div class="insight-card"><span class="insight-icon">📉</span><strong>${r.brand}</strong> under-indexes in ${city} vs region by ${(diff * 100).toFixed(1)}pp.</div>`);
+      }
+    });
+  }
   document.getElementById("compareInsights").innerHTML = insights.join("");
 
   // ── Region Deep Dive (extra data when region selected) ──
-  refreshCompareRegionDeep(rows, region, regionLabel);
+  refreshCompareRegionDeep(rows, scopeType, region, regionLabel, city);
 }
 
-function refreshCompareRegionDeep(rows, region, regionLabel) {
+function refreshCompareRegionDeep(rows, scopeType, region, regionLabel, city) {
   const section = document.getElementById("compareRegionDeepDive");
   if (!region) { section.style.display = "none"; return; }
   section.style.display = "block";
-  document.getElementById("compareRegionDeepTitle").textContent = `📍 Deep Dive — ${regionLabel}`;
+  if (scopeType === "city") {
+    document.getElementById("compareRegionDeepTitle").textContent = `📍 City Deep Dive — ${city}, ${regionLabel}`;
+  } else {
+    document.getElementById("compareRegionDeepTitle").textContent = `📍 Deep Dive — ${regionLabel}`;
+  }
 
   const selected = selectedArr();
+  if (scopeType === "city") {
+    const regionTotalAll = selected.reduce((s, b) => s + ((state.metrics.region_brand_counts[region] || {})[b] || 0), 0);
+    const totalInCity = rows.reduce((s, r) => s + r.total, 0);
+    const shareOfRegion = regionTotalAll ? totalInCity / regionTotalAll : 0;
+    document.getElementById("compareRegionDeepContent").innerHTML = `
+      <div class="rp-kpi-grid compact" style="margin-bottom:12px">
+        <div class="rp-kpi-card small"><div class="rp-kpi-value">${fmtInt(totalInCity)}</div><div class="rp-kpi-label">Total Stores</div></div>
+        <div class="rp-kpi-card small"><div class="rp-kpi-value">${fmtPct(shareOfRegion)}</div><div class="rp-kpi-label">Share of Region</div></div>
+        <div class="rp-kpi-card small"><div class="rp-kpi-value">${rows.length}</div><div class="rp-kpi-label">Active Brands</div></div>
+      </div>
+      <div class="rp-table-title" style="margin-top:8px">🏙️ Brand Mix — ${city}</div>
+      <table class="table">
+        <tr><th>Brand</th><th class="num">Count</th><th class="num">Share</th></tr>
+        ${rows.map(r => `<tr>
+          <td><div class="brand-dot-cell"><span class="brand-dot" style="background:${BRAND_COLORS[r.brand]||'#3B5BFE'};width:7px;height:7px"></span>${r.brand}</div></td>
+          <td class="num">${fmtInt(r.total)}</td>
+          <td class="num">${fmtPct(r.share)}</td>
+        </tr>`).join("")}
+      </table>
+    `;
+    return;
+  }
+
   const area = state.metrics.region_area_km2[region] || 1;
   const totalInRegion = rows.reduce((s, r) => s + r.total, 0);
   const density = totalInRegion / (area / 1000);
@@ -1558,15 +1692,6 @@ function wireUI() {
   document.getElementById("clearRegion").onclick = clearRegionSelection;
   const clearRegionDeep = document.getElementById("clearRegionDeep");
   if (clearRegionDeep) clearRegionDeep.onclick = clearRegionSelection;
-
-  document.querySelectorAll(".metric-toggle").forEach(btn => {
-    btn.addEventListener("click", () => {
-      document.querySelectorAll(".metric-toggle").forEach(b => b.classList.remove("active"));
-      btn.classList.add("active");
-      state.metric = btn.dataset.metric;
-      refreshAll();
-    });
-  });
 
   document.querySelectorAll("[data-region-sort]").forEach(btn => {
     btn.addEventListener("click", () => {

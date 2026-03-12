@@ -20,11 +20,8 @@
       <button class="sidebar-btn active" data-tab="overview" title="Coverage Map">
         <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/></svg>
       </button>
-      <button class="sidebar-btn" data-tab="deepreview" title="Regional Analytics">
+      <button class="sidebar-btn" data-tab="deepreview" title="Deep Review">
         <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 3h6a4 4 0 014 4v14a3 3 0 00-3-3H2z"/><path d="M22 3h-6a4 4 0 00-4 4v14a3 3 0 013-3h7z"/></svg>
-      </button>
-      <button class="sidebar-btn" data-tab="compare" title="Brand Compare">
-        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg>
       </button>
     </nav>
     <div class="sidebar-bottom">
@@ -105,8 +102,7 @@
       <div class="rp-header">
         <div class="rp-tabs">
           <button class="rp-tab active" data-tab="overview">Overview</button>
-          <button class="rp-tab" data-tab="deepreview">Regional Analytics</button>
-          <button class="rp-tab" data-tab="compare">Compare</button>
+          <button class="rp-tab" data-tab="deepreview">Deep Review</button>
         </div>
       </div>
 
@@ -143,15 +139,6 @@
           </div>
         </div>
 
-        <!-- Metric -->
-        <div class="rp-section" id="metricSection">
-          <div class="rp-section-header"><span>Map Metric</span></div>
-          <div class="metric-toggles">
-            <button class="metric-toggle active" data-metric="count">Total locations</button>
-            <button class="metric-toggle" data-metric="density">Per 1,000 km²</button>
-          </div>
-        </div>
-
         <!-- Region detail -->
         <div class="rp-section" id="regionDetailSection">
           <div class="rp-section-header">
@@ -172,6 +159,51 @@
             <div class="rp-table-section">
               <div class="rp-table-title">Top Cities</div>
               <table class="table" id="regionCityTable"></table>
+            </div>
+          </div>
+        </div>
+
+        <div class="rp-section" id="compareSection">
+          <div class="rp-section">
+            <p class="rp-desc" id="compareDesc">Head-to-head brand analysis with market share, regional presence, and competitive positioning.</p>
+
+            <!-- Compare KPIs -->
+            <div class="rp-kpi-grid" id="compareKpis" style="margin-bottom:14px"></div>
+
+            <!-- Market Share Bars -->
+            <div class="rp-table-section">
+              <div class="rp-table-title" id="compareShareTitle">📊 Market Share</div>
+              <div id="compareShareBars" class="share-bars"></div>
+            </div>
+
+            <!-- Leaderboard -->
+            <div class="rp-table-section">
+              <div class="rp-table-title" id="compareLeaderTitle">🏆 Brand Leaderboard</div>
+              <table class="table" id="compareTable"></table>
+            </div>
+
+            <!-- Regional Presence Matrix -->
+            <div class="rp-table-section">
+              <div class="rp-table-title" id="compareMatrixTitle">🗺️ Regional Presence Matrix</div>
+              <div id="compareMatrix" class="compare-matrix"></div>
+            </div>
+
+            <!-- Concentration Analysis -->
+            <div class="rp-table-section">
+              <div class="rp-table-title" id="compareConcentrationTitle">🎯 Concentration Analysis</div>
+              <table class="table" id="compareConcentration"></table>
+            </div>
+
+            <!-- Key Insights -->
+            <div class="rp-table-section">
+              <div class="rp-table-title">💡 Key Insights</div>
+              <div id="compareInsights" class="compare-insights"></div>
+            </div>
+
+            <!-- Region-specific deep-dive (shown when region selected) -->
+            <div class="rp-table-section" id="compareRegionDeepDive" style="display:none">
+              <div class="rp-table-title" id="compareRegionDeepTitle">📍 Region Deep Dive</div>
+              <div id="compareRegionDeepContent"></div>
             </div>
           </div>
         </div>
@@ -225,40 +257,6 @@
           <p class="rp-desc">Region-first analytics with concrete store counts, density, and brand leadership.</p>
         </div>
 
-        <!-- Heatmap mode -->
-        <div class="rp-section heatmap-section-highlight" id="heatmapSection">
-          <div class="rp-section-header">
-            <span>🔥 Heatmap Mode</span>
-            <label class="toggle-switch">
-              <input type="checkbox" id="heatmapToggle" />
-              <span class="toggle-slider"></span>
-            </label>
-          </div>
-          <div class="heatmap-hint" id="heatmapHint">Compare your restaurant chain against competitors on the map. Red hexagons mean competitors have more nearby locations; green means you lead by count.</div>
-          <div id="heatmapSettings" class="heatmap-settings hidden">
-            <div class="heatmap-row">
-              <div class="geo-label">Primary Brand</div>
-              <select id="primaryBrandSelect" class="geo-select"></select>
-            </div>
-            <div class="heatmap-row">
-              <div class="geo-label">Compare Against</div>
-              <select id="compareModeSelect" class="geo-select">
-                <option value="all">All other brands</option>
-                <option value="pick">Pick specific brand</option>
-              </select>
-            </div>
-            <div class="heatmap-row hidden" id="secondaryBrandRow">
-              <div class="geo-label">Secondary Brand</div>
-              <select id="secondaryBrandSelect" class="geo-select"></select>
-            </div>
-            <div class="heatmap-legend-bar">
-              <div class="heatmap-legend-label">Fewer stores</div>
-              <div class="heatmap-legend-gradient"></div>
-              <div class="heatmap-legend-label">More stores</div>
-            </div>
-          </div>
-        </div>
-
         <!-- Enterprise-locked features -->
         <div class="rp-section enterprise-locked-section">
           <div class="enterprise-badge">🔒 Enterprise</div>
@@ -289,53 +287,39 @@
               <div class="enterprise-feature-desc">AI-powered sentiment analysis across Google, TripAdvisor, and delivery apps — track brand perception in real time.</div>
             </div>
           </div>
+          <div class="rp-section heatmap-section-highlight hidden" id="heatmapSection">
+            <div class="rp-section-header">
+              <span>🔥 Heatmap Mode</span>
+              <label class="toggle-switch">
+                <input type="checkbox" id="heatmapToggle" />
+                <span class="toggle-slider"></span>
+              </label>
+            </div>
+            <div class="heatmap-hint" id="heatmapHint">Compare your restaurant chain against competitors on the map. Red hexagons mean competitors have more nearby locations; green means you lead by count.</div>
+            <div id="heatmapSettings" class="heatmap-settings hidden">
+              <div class="heatmap-row">
+                <div class="geo-label">Primary Brand</div>
+                <select id="primaryBrandSelect" class="geo-select"></select>
+              </div>
+              <div class="heatmap-row">
+                <div class="geo-label">Compare Against</div>
+                <select id="compareModeSelect" class="geo-select">
+                  <option value="all">All other brands</option>
+                  <option value="pick">Pick specific brand</option>
+                </select>
+              </div>
+              <div class="heatmap-row hidden" id="secondaryBrandRow">
+                <div class="geo-label">Secondary Brand</div>
+                <select id="secondaryBrandSelect" class="geo-select"></select>
+              </div>
+              <div class="heatmap-legend-bar">
+                <div class="heatmap-legend-label">Fewer stores</div>
+                <div class="heatmap-legend-gradient"></div>
+                <div class="heatmap-legend-label">More stores</div>
+              </div>
+            </div>
+          </div>
           <a href="https://calendly.com/denis_getplace/30min" target="_blank" rel="noopener noreferrer" class="enterprise-cta">Book a Demo →</a>
-        </div>
-      </div>
-
-      <!-- ====== COMPARE ====== -->
-      <div class="rp-content hidden" id="compareContent">
-        <div class="rp-section">
-          <p class="rp-desc" id="compareDesc">Head-to-head brand analysis with market share, regional presence, and competitive positioning.</p>
-
-          <!-- Compare KPIs -->
-          <div class="rp-kpi-grid" id="compareKpis" style="margin-bottom:14px"></div>
-
-          <!-- Market Share Bars -->
-          <div class="rp-table-section">
-            <div class="rp-table-title" id="compareShareTitle">📊 Market Share</div>
-            <div id="compareShareBars" class="share-bars"></div>
-          </div>
-
-          <!-- Leaderboard -->
-          <div class="rp-table-section">
-            <div class="rp-table-title" id="compareLeaderTitle">🏆 Brand Leaderboard</div>
-            <table class="table" id="compareTable"></table>
-          </div>
-
-          <!-- Regional Presence Matrix -->
-          <div class="rp-table-section">
-            <div class="rp-table-title" id="compareMatrixTitle">🗺️ Regional Presence Matrix</div>
-            <div id="compareMatrix" class="compare-matrix"></div>
-          </div>
-
-          <!-- Concentration Analysis -->
-          <div class="rp-table-section">
-            <div class="rp-table-title" id="compareConcentrationTitle">🎯 Concentration Analysis</div>
-            <table class="table" id="compareConcentration"></table>
-          </div>
-
-          <!-- Key Insights -->
-          <div class="rp-table-section">
-            <div class="rp-table-title">💡 Key Insights</div>
-            <div id="compareInsights" class="compare-insights"></div>
-          </div>
-
-          <!-- Region-specific deep-dive (shown when region selected) -->
-          <div class="rp-table-section" id="compareRegionDeepDive" style="display:none">
-            <div class="rp-table-title" id="compareRegionDeepTitle">📍 Region Deep Dive</div>
-            <div id="compareRegionDeepContent"></div>
-          </div>
         </div>
       </div>
 
