@@ -67,13 +67,6 @@
 
     <!-- Right panel -->
     <div class="right-panel" id="rightPanel">
-      <div class="rp-header">
-        <div class="rp-tabs">
-          <button class="rp-tab active" data-tab="overview">Overview</button>
-          <button class="rp-tab" data-tab="deepreview">Deep Review</button>
-        </div>
-      </div>
-
       <!-- ====== OVERVIEW ====== -->
       <div class="rp-content" id="overviewContent">
 
@@ -107,11 +100,25 @@
           </div>
         </div>
 
+        <div class="rp-section" id="gbSummarySection">
+          <div class="rp-section-header">
+            <span>Great Britain Summary</span>
+          </div>
+          <table class="table" id="gbSummaryTable"></table>
+        </div>
+
         <div class="rp-section" id="regionTableSection">
           <div class="rp-section-header">
             <span>Regional Coverage & Competitive Structure</span>
           </div>
           <table class="table" id="regionTable"></table>
+        </div>
+
+        <div class="rp-section" id="cityBreakdownSection">
+          <div class="rp-section-header">
+            <span>City Breakdown</span>
+          </div>
+          <table class="table" id="cityBreakdownTable"></table>
         </div>
       </div>
 

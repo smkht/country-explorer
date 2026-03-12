@@ -287,7 +287,6 @@ function setCountry(country) {
 // ── Tab switching ──
 function setTab(tab) {
   document.querySelectorAll(".sidebar-btn[data-tab]").forEach(b => b.classList.toggle("active", b.dataset.tab === tab));
-  document.querySelectorAll(".rp-tab").forEach(b => b.classList.toggle("active", b.dataset.tab === tab));
   document.getElementById("overviewContent").classList.toggle("hidden", tab !== "overview");
   document.getElementById("deepreviewContent").classList.toggle("hidden", tab !== "deepreview");
   if ((tab === "overview" || tab === "deepreview") && state.map) setTimeout(() => state.map.invalidateSize(), 100);
@@ -321,14 +320,17 @@ function buildBrandList() {
       <span class="brand-count" data-brand="${b}">${fmtInt(total)}</span>
     `;
     el.onclick = () => {
-      state.selectedBrands = new Set([b]);
-      document.querySelectorAll(".brand-pill").forEach(pill => {
-        const name = pill.dataset.brand;
-        if (!name) return;
-        pill.classList.toggle("inactive", name !== b);
-      });
+      if (state.selectedBrands.has(b)) {
+        if (state.selectedBrands.size > 1) {
+          state.selectedBrands.delete(b);
+          el.classList.add("inactive");
+        }
+      } else {
+        state.selectedBrands.add(b);
+        el.classList.remove("inactive");
+      }
       const allPill = document.getElementById("brandAllPill");
-      if (allPill) allPill.classList.remove("active");
+      if (allPill) allPill.classList.toggle("active", state.selectedBrands.size === state.metrics.brands.length);
       state.selectedCity = null;
       refreshAll();
     };
@@ -748,7 +750,6 @@ function buildHexLayer() {
   } else {
     let maxCount = 0;
     let maxPop = 0;
-    const isDensityMetric = state.metric === "density";
     hexGrid.features.forEach((hex, i) => {
       const pts = hexPoints[i];
       hex.properties.count = pts.length;
@@ -756,11 +757,12 @@ function buildHexLayer() {
       hex.properties.estPop = fastEstimatePopulation(hexAreaKm2, cx, cy);
       hex.properties.unlocated = fastEstimateUnlocated(hexAreaKm2, cx, cy, brandFilter);
       hex.properties.adjustedCount = hex.properties.count + hex.properties.unlocated;
-      if (isDensityMetric) {
-        hex.properties.displayValue = hexAreaKm2 > 0 ? hex.properties.adjustedCount / (hexAreaKm2 / 1000) : 0;
-      } else {
-        hex.properties.displayValue = hex.properties.adjustedCount;
-      }
+      const popDensity = hexAreaKm2 > 0 ? hex.properties.estPop / hexAreaKm2 : 0;
+      const diversity = new Set(pts.map(p => p.properties.brand)).size;
+      const densityPer1000 = hexAreaKm2 > 0 ? hex.properties.adjustedCount / (hexAreaKm2 / 1000) : 0;
+      const coverage = computeCoverageMetrics(hex.properties.adjustedCount, hexAreaKm2, hex.properties.estPop, diversity, densityPer1000);
+      const radiusScore = coverage.coveragePct ? (coverage.coveragePct * 100) : 0;
+      hex.properties.displayValue = radiusScore;
       if (hex.properties.displayValue > maxCount) maxCount = hex.properties.displayValue;
       if (hex.properties.estPop > maxPop) maxPop = hex.properties.estPop;
     });
@@ -785,8 +787,8 @@ function buildHexLayer() {
         const popPer = (adjCount > 0 && pop > 0) ? (pop / adjCount).toLocaleString('en', {maximumFractionDigits: 0}) : '—';
         const unlocNote = unloc > 0.1 ? ` (+${unloc.toFixed(1)} est.)` : '';
         const popLine = pop > 0 ? `<br>Pop: ~${popK}` + (adjCount > 0 ? ` · 1 per ${popPer} people` : '') : '';
-        const densityLine = isDensityMetric ? `<br>Density: ${feature.properties.displayValue.toFixed(1)} per 1k km²` : '';
-        layer.bindTooltip(`${c} location${c !== 1 ? 's' : ''}${unlocNote}${popLine}${densityLine}`, { sticky: true });
+        const overlapLine = `<br>Coverage overlap: ${feature.properties.displayValue.toFixed(1)}`;
+        layer.bindTooltip(`${c} location${c !== 1 ? 's' : ''}${unlocNote}${popLine}${overlapLine}`, { sticky: true });
       }
     }).addTo(state.map);
   }
@@ -809,17 +811,8 @@ function updateLegend() {
       <span class="legend-block" style="background:#8BC34A"></span>
       <span class="legend-block" style="background:#4CAF50"></span>
     `;
-  } else if (state.metric === "density") {
-    title.textContent = "Density per 1,000 km²";
-    scale.innerHTML = `
-      <span class="legend-block" style="background:hsla(170,70%,85%,0.3)"></span>
-      <span class="legend-block" style="background:hsla(170,75%,72%,0.5)"></span>
-      <span class="legend-block" style="background:hsla(170,80%,60%,0.65)"></span>
-      <span class="legend-block" style="background:hsla(170,85%,48%,0.75)"></span>
-      <span class="legend-block" style="background:hsla(170,90%,37%,0.85)"></span>
-    `;
   } else {
-    title.textContent = "Location count";
+    title.textContent = "Coverage overlap";
     scale.innerHTML = `
       <span class="legend-block" style="background:hsla(230,85%,92%,0.5)"></span>
       <span class="legend-block" style="background:hsla(230,85%,80%,0.6)"></span>
@@ -916,7 +909,9 @@ function refreshAll() {
   refreshBrandCounts();
   buildHexLayer();
   rebuildLocationsLayer();
+  renderGreatBritainSummary();
   renderRegionTable();
+  renderCityBreakdown();
 }
 
 function refreshKPIs() {
@@ -978,6 +973,25 @@ function refreshKPIs() {
   }
 }
 
+function computeCoverageMetrics(total, areaKm2, population, diversity, densityPer1000) {
+  if (!total || !areaKm2 || !population) {
+    return { coveredPop: null, coveragePct: null, overlapIndex: null };
+  }
+  const popDensity = population / areaKm2;
+  const urbanFactor = popDensity > 2000 ? 0.75 : popDensity > 1000 ? 0.9 : 1.15;
+  const intensity = Math.min(2.0, (densityPer1000 / 180) + (Math.max(0, diversity - 1) * 0.08));
+  const baseRadius = 3.5;
+  const radius = Math.min(8, Math.max(1.8, baseRadius * urbanFactor / (1 + intensity)));
+  const coverageArea = total * Math.PI * radius * radius;
+  const coverageShare = Math.min(1, coverageArea / areaKm2);
+  const overlapIndex = Math.max(0, coverageArea / areaKm2 - 1);
+  return {
+    coveredPop: population * coverageShare,
+    coveragePct: coverageShare,
+    overlapIndex
+  };
+}
+
 function renderRegionTable() {
   const selected = selectedArr();
   const popByRegion = state.metrics.region_population_2023 || {};
@@ -993,7 +1007,9 @@ function renderRegionTable() {
     const population = popByRegion[region] || null;
     const income = incomeByRegion[region] || null;
     const peoplePerStore = population && total ? population / total : null;
-    return { region, total, density, leader, leaderShare, peoplePerStore, income };
+    const diversity = selected.filter(b => (counts[b] || 0) > 0).length;
+    const coverage = computeCoverageMetrics(total, area, population, diversity, density);
+    return { region, total, density, leader, leaderShare, peoplePerStore, income, coverage, population, area };
   });
 
   const colSpan = 10;
@@ -1026,67 +1042,122 @@ function renderRegionTable() {
           <td class="num">${r.total ? fmtPct(r.leaderShare) : "—"}</td>
           <td class="num">${r.peoplePerStore ? fmtInt(Math.round(r.peoplePerStore)) : "—"}</td>
           <td class="num">${r.income ? fmtGBP(r.income) : "—"}</td>
-          <td class="num">—</td>
-          <td class="num">—</td>
-          <td class="num">—</td>
+          <td class="num">${r.coverage.coveredPop ? fmtInt(Math.round(r.coverage.coveredPop)) : "—"}</td>
+          <td class="num">${r.coverage.coveragePct ? fmtPct(r.coverage.coveragePct) : "—"}</td>
+          <td class="num">${r.coverage.overlapIndex ? r.coverage.overlapIndex.toFixed(2) : "—"}</td>
         </tr>`;
-
-      if (state.expandedRegion !== r.region) return mainRow;
-
-      const cityBrand = {};
-      state.locationsGeojson.features.forEach(f => {
-        const p = f.properties;
-        if (p.region !== r.region || !selected.includes(p.brand)) return;
-        const city = (p.city || "Unknown").trim();
-        if (!cityBrand[city]) cityBrand[city] = { total: 0 };
-        cityBrand[city][p.brand] = (cityBrand[city][p.brand] || 0) + 1;
-        cityBrand[city].total++;
-      });
-      const topCities = Object.entries(cityBrand).sort((a, b) => b[1].total - a[1].total).slice(0, 10);
-      const cityTable = `
-        <table class="table">
-          <tr><th>City</th>${selected.map(b => `<th class="num" style="color:${BRAND_COLORS[b]||'#3B5BFE'}">${b.split("'")[0]}</th>`).join("")}<th class="num">Total</th></tr>
-          ${topCities.map(([city, data]) => `
-            <tr class="city-row" data-city="${city}" data-region="${r.region}">
-              <td>${city}</td>
-              ${selected.map(b => `<td class="num">${data[b] || 0}</td>`).join("")}
-              <td class="num" style="font-weight:700">${data.total}</td>
-            </tr>`).join("")}
-        </table>`;
-
-      return `${mainRow}
-        <tr class="region-accordion">
-          <td colspan="${colSpan}">${cityTable}</td>
-        </tr>`;
+      return mainRow;
     }).join("")}
   `;
 
   document.querySelectorAll(".region-row").forEach(row => {
     row.onclick = () => {
       const region = row.dataset.region;
-      if (state.expandedRegion === region) {
-        state.expandedRegion = null;
-        state.selectedRegion = null;
-        state.selectedCity = null;
-        flyToRegion(null);
-      } else {
-        state.expandedRegion = region;
-        state.selectedRegion = region;
-        state.selectedCity = null;
-        flyToRegion(region);
-      }
+      state.selectedRegion = region;
+      state.selectedCity = null;
+      flyToRegion(region);
       refreshAll();
     };
   });
+}
+
+function renderGreatBritainSummary() {
+  const selected = selectedArr();
+  const popByRegion = state.metrics.region_population_2023 || {};
+  const incomeByRegion = state.metrics.region_income_gdhi_per_head_2023 || {};
+  const areaTotal = Object.values(state.metrics.region_area_km2).reduce((s, v) => s + v, 0);
+  const populationTotal = Object.values(popByRegion).reduce((s, v) => s + v, 0);
+  const countsTotal = selected.reduce((s, b) => s + (state.metrics.brand_totals[b] || 0), 0);
+  const density = areaTotal ? countsTotal / (areaTotal / 1000) : 0;
+  const leader = selected.map(b => ({ brand: b, count: state.metrics.brand_totals[b] || 0 }))
+    .sort((a, b) => b.count - a.count)[0] || { brand: "—", count: 0 };
+  const leaderShare = countsTotal ? leader.count / countsTotal : 0;
+  const incomeAvg = populationTotal
+    ? Object.entries(popByRegion).reduce((s, [region, pop]) => s + (incomeByRegion[region] || 0) * pop, 0) / populationTotal
+    : null;
+  const peoplePerStore = populationTotal && countsTotal ? populationTotal / countsTotal : null;
+  const diversity = selected.filter(b => (state.metrics.brand_totals[b] || 0) > 0).length;
+  const coverage = computeCoverageMetrics(countsTotal, areaTotal, populationTotal, diversity, density);
+
+  const leaderCell = leader.brand !== "—"
+    ? `<div class="brand-dot-cell"><span class="brand-dot" style="background:${BRAND_COLORS[leader.brand]||'#3B5BFE'};width:8px;height:8px"></span>${leader.brand}</div>`
+    : "—";
+
+  const table = document.getElementById("gbSummaryTable");
+  table.innerHTML = `
+    <tr>
+      <th>Region</th>
+      <th class="num">Locations</th>
+      <th class="num">Density</th>
+      <th>Leader</th>
+      <th class="num">Leader Share</th>
+      <th class="num">People / Store</th>
+      <th class="num">Income / Head</th>
+      <th class="num">Covered Pop</th>
+      <th class="num">Coverage %</th>
+      <th class="num">Overlap</th>
+    </tr>
+    <tr class="gb-row">
+      <td><strong>Great Britain</strong></td>
+      <td class="num">${fmtInt(countsTotal)}</td>
+      <td class="num">${density ? density.toFixed(1) : "—"}</td>
+      <td>${leaderCell}</td>
+      <td class="num">${countsTotal ? fmtPct(leaderShare) : "—"}</td>
+      <td class="num">${peoplePerStore ? fmtInt(Math.round(peoplePerStore)) : "—"}</td>
+      <td class="num">${incomeAvg ? fmtGBP(incomeAvg) : "—"}</td>
+      <td class="num">${coverage.coveredPop ? fmtInt(Math.round(coverage.coveredPop)) : "—"}</td>
+      <td class="num">${coverage.coveragePct ? fmtPct(coverage.coveragePct) : "—"}</td>
+      <td class="num">${coverage.overlapIndex ? coverage.overlapIndex.toFixed(2) : "—"}</td>
+    </tr>
+  `;
+
+  const row = document.querySelector(".gb-row");
+  if (row) {
+    row.onclick = () => {
+      state.selectedRegion = null;
+      state.selectedCity = null;
+      flyToRegion(null);
+      refreshAll();
+    };
+  }
+}
+
+function renderCityBreakdown() {
+  const selected = selectedArr();
+  const region = state.selectedRegion;
+  const cityFilter = state.selectedCity;
+  const cityBrand = {};
+
+  state.locationsGeojson.features.forEach(f => {
+    const p = f.properties;
+    if (region && p.region !== region) return;
+    if (cityFilter && (p.city || "").trim().toLowerCase() !== cityFilter.toLowerCase()) return;
+    if (!selected.includes(p.brand)) return;
+    const city = (p.city || "Unknown").trim();
+    if (!cityBrand[city]) cityBrand[city] = { total: 0, counts: {} };
+    cityBrand[city].counts[p.brand] = (cityBrand[city].counts[p.brand] || 0) + 1;
+    cityBrand[city].total++;
+  });
+
+  const topCities = Object.entries(cityBrand).sort((a, b) => b[1].total - a[1].total).slice(0, 10);
+  const table = document.getElementById("cityBreakdownTable");
+  table.innerHTML = `
+    <tr><th>City</th>${selected.map(b => `<th class="num" style="color:${BRAND_COLORS[b]||'#3B5BFE'}">${b.split("'")[0]}</th>`).join("")}<th class="num">Total</th></tr>
+    ${topCities.map(([city, data]) => `
+      <tr class="city-row" data-city="${city}" data-region="${region || ''}">
+        <td>${city}</td>
+        ${selected.map(b => `<td class="num">${data.counts[b] || 0}</td>`).join("")}
+        <td class="num" style="font-weight:700">${data.total}</td>
+      </tr>`).join("")}
+  `;
 
   document.querySelectorAll(".city-row").forEach(row => {
     row.onclick = () => {
-      const region = row.dataset.region;
       const city = row.dataset.city;
-      state.selectedRegion = region;
+      const regionName = row.dataset.region || region;
+      if (regionName) state.selectedRegion = regionName;
       state.selectedCity = city;
-      state.expandedRegion = region;
-      flyToCityOrData(city, region);
+      flyToCityOrData(city, regionName || region);
       refreshAll();
     };
   });
@@ -1748,8 +1819,6 @@ function refreshCompareRegionDeep(rows, scopeType, region, regionLabel, city) {
 // ── Wire UI ──
 function wireUI() {
   document.querySelectorAll(".sidebar-btn[data-tab]").forEach(b => b.addEventListener("click", () => setTab(b.dataset.tab)));
-  document.querySelectorAll(".rp-tab").forEach(b => b.addEventListener("click", () => setTab(b.dataset.tab)));
-
   document.querySelectorAll("[data-region-sort]").forEach(btn => {
     btn.addEventListener("click", () => {
       document.querySelectorAll("[data-region-sort]").forEach(b => b.classList.remove("active"));
