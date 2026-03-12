@@ -154,6 +154,7 @@ const state = {
   metric: "count",
   selectedRegion: null,
   selectedCity: null,
+  expandedRegion: null,
   metrics: null,
   regionsGeojson: null,
   locationsGeojson: null,
@@ -259,10 +260,9 @@ function setCountry(country) {
   state.country = country;
   const isEngland = country === "england";
   document.getElementById("noDataOverlay").classList.toggle("hidden", isEngland);
-  document.getElementById("regionSelect").disabled = !isEngland;
   document.getElementById("mapLegend").classList.toggle("hidden", !isEngland);
 
-  ["kpiSection", "brandsSection", "regionDetailSection", "heatmapSection", "regionRankSection", "regionDrilldownSection", "deepreviewContent"]
+  ["kpiSection", "brandsSection", "regionTableSection", "heatmapSection", "deepreviewContent"]
     .forEach(id => {
       const el = document.getElementById(id);
       if (!el) return;
@@ -280,8 +280,7 @@ function setCountry(country) {
     if (state.regionsLayer) state.regionsLayer.remove();
     state.selectedRegion = null;
     state.selectedCity = null;
-    document.getElementById("regionSelect").value = "";
-    document.getElementById("citySelectorWrap").style.display = "none";
+    state.expandedRegion = null;
   }
 }
 
@@ -322,11 +321,15 @@ function buildBrandList() {
       <span class="brand-count" data-brand="${b}">${fmtInt(total)}</span>
     `;
     el.onclick = () => {
-      if (state.selectedBrands.has(b)) { state.selectedBrands.delete(b); el.classList.add("inactive"); }
-      else { state.selectedBrands.add(b); el.classList.remove("inactive"); }
-      if (state.selectedBrands.size === 0) { state.selectedBrands.add(b); el.classList.remove("inactive"); }
+      state.selectedBrands = new Set([b]);
+      document.querySelectorAll(".brand-pill").forEach(pill => {
+        const name = pill.dataset.brand;
+        if (!name) return;
+        pill.classList.toggle("inactive", name !== b);
+      });
       const allPill = document.getElementById("brandAllPill");
-      if (allPill) allPill.classList.toggle("active", state.selectedBrands.size === state.metrics.brands.length);
+      if (allPill) allPill.classList.remove("active");
+      state.selectedCity = null;
       refreshAll();
     };
     wrap.appendChild(el);
@@ -342,20 +345,11 @@ function setAllBrands(brands) {
   });
   const allPill = document.getElementById("brandAllPill");
   if (allPill) allPill.classList.toggle("active", state.selectedBrands.size === state.metrics.brands.length);
+  state.selectedCity = null;
   refreshAll();
 }
 
 // ── Build selectors ──
-function buildRegionSelect() {
-  const sel = document.getElementById("regionSelect");
-  state.metrics.regions.forEach(r => {
-    const opt = document.createElement("option");
-    opt.value = r;
-    opt.textContent = r.replace(" (England)", "");
-    sel.appendChild(opt);
-  });
-}
-
 function buildBrandSelects() {
   const primary = document.getElementById("primaryBrandSelect");
   const secondary = document.getElementById("secondaryBrandSelect");
@@ -371,42 +365,6 @@ function buildBrandSelects() {
   state.secondaryBrand = state.metrics.brands[1];
   primary.value = state.primaryBrand;
   secondary.value = state.secondaryBrand;
-}
-
-function buildCitySelect(region) {
-  const wrap = document.getElementById("citySelectorWrap");
-  const sel = document.getElementById("citySelect");
-  const prevValue = sel.value;
-  sel.innerHTML = '<option value="">Top 10 Cities</option>';
-
-  if (!region) { wrap.style.display = "none"; return; }
-  wrap.style.display = "flex";
-
-  const selected = selectedArr();
-  const cityCounts = {};
-  state.locationsGeojson.features.forEach(f => {
-    const p = f.properties;
-    if (p.region !== region || !selected.includes(p.brand)) return;
-    const city = (p.city || "Unknown").trim();
-    cityCounts[city] = (cityCounts[city] || 0) + 1;
-  });
-  const cities = Object.entries(cityCounts)
-    .map(([city, count]) => ({ city, count }))
-    .sort((a, b) => b.count - a.count)
-    .slice(0, 10);
-
-  cities.forEach(c => {
-    const opt = document.createElement("option");
-    opt.value = c.city;
-    opt.textContent = `${c.city} (${c.count})`;
-    sel.appendChild(opt);
-  });
-
-  if (prevValue && cities.some(c => c.city === prevValue)) {
-    sel.value = prevValue;
-  } else {
-    sel.value = "";
-  }
 }
 
 const selectedArr = () => Array.from(state.selectedBrands);
@@ -954,57 +912,182 @@ function refreshAll() {
   if (state.country !== "england") return;
   refreshKPIs();
   refreshBrandCounts();
-  if (state.selectedRegion) buildCitySelect(state.selectedRegion);
   buildHexLayer();
   rebuildLocationsLayer();
-  refreshRegionPanel();
-  refreshRegionList();
-  refreshRegionalAnalytics();
-  refreshCompareTab();
+  renderRegionTable();
 }
 
 function refreshKPIs() {
   const selected = selectedArr();
   const regionFilter = state.selectedRegion;
   const cityFilter = state.selectedCity;
-  let total = 0, london = 0, regionsCovered = 0;
-  let bestRegion = null, bestVal = -1;
+  const allBrands = state.metrics.brands;
 
-  if (cityFilter) {
-    const cityCount = state.locationsGeojson.features.filter(f => {
+  const areaCounts = {};
+  if (cityFilter && regionFilter) {
+    state.locationsGeojson.features.forEach(f => {
       const p = f.properties;
-      if (regionFilter && p.region !== regionFilter) return false;
-      if ((p.city || "").trim().toLowerCase() !== cityFilter.toLowerCase()) return false;
-      return selected.includes(p.brand);
-    }).length;
-    total = cityCount;
-    regionsCovered = cityCount > 0 ? 1 : 0;
-    bestRegion = regionFilter || "—";
-    london = regionFilter === "London" ? cityCount : 0;
-  } else {
-    const regionsToCheck = regionFilter ? [regionFilter] : state.metrics.regions;
-
-    regionsToCheck.forEach(r => {
-      const counts = state.metrics.region_brand_counts[r] || {};
-      let t = 0;
-      selected.forEach(b => t += (counts[b] || 0));
-      total += t;
-      if (r === "London") london = t;
-      if (t > 0) regionsCovered++;
-      const v = state.metric === "count" ? t : t / ((state.metrics.region_area_km2[r] || 1) / 1000);
-      if (v > bestVal) { bestVal = v; bestRegion = r; }
+      if (p.region !== regionFilter) return;
+      if ((p.city || "").trim().toLowerCase() !== cityFilter.toLowerCase()) return;
+      areaCounts[p.brand] = (areaCounts[p.brand] || 0) + 1;
     });
+  } else if (regionFilter) {
+    Object.assign(areaCounts, state.metrics.region_brand_counts[regionFilter] || {});
+  } else {
+    Object.assign(areaCounts, state.metrics.brand_totals || {});
   }
 
-  const totalRegions = regionFilter ? 1 : 9;
-  document.getElementById("kpiTotal").textContent = fmtInt(total);
-  document.getElementById("kpiRegions").textContent = regionFilter ? `1/1` : `${regionsCovered}/9`;
-  document.getElementById("kpiDense").textContent = (bestRegion || "—").replace(" (England)", "");
-  if (cityFilter && regionFilter !== "London") {
-    document.getElementById("kpiLondonShare").textContent = "—";
+  const totalAll = allBrands.reduce((s, b) => s + (areaCounts[b] || 0), 0);
+  const selectedTotal = selected.reduce((s, b) => s + (areaCounts[b] || 0), 0);
+  const leader = allBrands.map(b => ({ brand: b, count: areaCounts[b] || 0 }))
+    .sort((a, b) => b.count - a.count)[0];
+  const leaderShare = totalAll ? (leader.count / totalAll) : 0;
+
+  const singleMode = selected.length === 1;
+  const selectedBrand = selected[0];
+  if (singleMode) {
+    const selectedCount = areaCounts[selectedBrand] || 0;
+    const selectedShare = totalAll ? selectedCount / totalAll : 0;
+    const rank = allBrands
+      .map(b => ({ brand: b, count: areaCounts[b] || 0 }))
+      .sort((a, b) => b.count - a.count)
+      .findIndex(r => r.brand === selectedBrand) + 1;
+    const gap = leaderShare - selectedShare;
+    document.getElementById("kpiTotal").textContent = fmtInt(selectedCount);
+    document.getElementById("kpiRegions").textContent = totalAll ? fmtPct(selectedShare) : "—";
+    document.getElementById("kpiDense").textContent = rank ? `#${rank}` : "—";
+    document.getElementById("kpiLondonShare").textContent = totalAll ? `${(gap * 100).toFixed(1)}pp` : "—";
+    document.querySelector("#kpiTotal + .rp-kpi-label").textContent = "Selected Chain Locations";
+    document.querySelector("#kpiRegions + .rp-kpi-label").textContent = "Selected Chain Share";
+    document.querySelector("#kpiDense + .rp-kpi-label").textContent = "Rank in Selected Area";
+    document.querySelector("#kpiLondonShare + .rp-kpi-label").textContent = "Gap vs Leader";
   } else {
-    document.getElementById("kpiLondonShare").textContent = total ? fmtPct(london / total) : "—";
+    const density = regionFilter
+      ? selectedTotal / ((state.metrics.region_area_km2[regionFilter] || 1) / 1000)
+      : selectedTotal / (Object.values(state.metrics.region_area_km2).reduce((s, v) => s + v, 0) / 1000);
+    document.getElementById("kpiTotal").textContent = fmtInt(selectedTotal);
+    document.getElementById("kpiRegions").textContent = leader ? leader.brand : "—";
+    document.getElementById("kpiDense").textContent = leader ? fmtPct(leaderShare) : "—";
+    document.getElementById("kpiLondonShare").textContent = density ? density.toFixed(1) : "—";
+    document.querySelector("#kpiTotal + .rp-kpi-label").textContent = "Total Locations";
+    document.querySelector("#kpiRegions + .rp-kpi-label").textContent = "Leader";
+    document.querySelector("#kpiDense + .rp-kpi-label").textContent = "Leader Share";
+    document.querySelector("#kpiLondonShare + .rp-kpi-label").textContent = "Density (per 1k km²)";
   }
+}
+
+function renderRegionTable() {
+  const selected = selectedArr();
+  const popByRegion = state.metrics.region_population_2023 || {};
+  const incomeByRegion = state.metrics.region_income_gdhi_per_head_2023 || {};
+  const rows = state.metrics.regions.map(region => {
+    const counts = state.metrics.region_brand_counts[region] || {};
+    const total = selected.reduce((s, b) => s + (counts[b] || 0), 0);
+    const area = state.metrics.region_area_km2[region] || 1;
+    const density = total / (area / 1000);
+    const leader = selected.map(b => ({ brand: b, count: counts[b] || 0 }))
+      .sort((a, b) => b.count - a.count)[0] || { brand: "—", count: 0 };
+    const leaderShare = total ? leader.count / total : 0;
+    const population = popByRegion[region] || null;
+    const income = incomeByRegion[region] || null;
+    const peoplePerStore = population && total ? population / total : null;
+    return { region, total, density, leader, leaderShare, peoplePerStore, income };
+  });
+
+  const colSpan = 10;
+  const table = document.getElementById("regionTable");
+  table.innerHTML = `
+    <tr>
+      <th>Region</th>
+      <th class="num">Locations</th>
+      <th class="num">Density</th>
+      <th>Leader</th>
+      <th class="num">Leader Share</th>
+      <th class="num">People / Store</th>
+      <th class="num">Income / Head</th>
+      <th class="num">Covered Pop</th>
+      <th class="num">Coverage %</th>
+      <th class="num">Overlap</th>
+    </tr>
+    ${rows.map(r => {
+      const isActive = r.region === state.selectedRegion;
+      const regionLabel = r.region.replace(" (England)", "");
+      const leaderCell = r.leader.brand !== "—"
+        ? `<div class="brand-dot-cell"><span class="brand-dot" style="background:${BRAND_COLORS[r.leader.brand]||'#3B5BFE'};width:8px;height:8px"></span>${r.leader.brand}</div>`
+        : "—";
+      const mainRow = `
+        <tr class="region-row ${isActive ? 'active' : ''}" data-region="${r.region}">
+          <td><strong>${regionLabel}</strong></td>
+          <td class="num">${fmtInt(r.total)}</td>
+          <td class="num">${r.density.toFixed(1)}</td>
+          <td>${leaderCell}</td>
+          <td class="num">${r.total ? fmtPct(r.leaderShare) : "—"}</td>
+          <td class="num">${r.peoplePerStore ? fmtInt(Math.round(r.peoplePerStore)) : "—"}</td>
+          <td class="num">${r.income ? fmtGBP(r.income) : "—"}</td>
+          <td class="num">—</td>
+          <td class="num">—</td>
+          <td class="num">—</td>
+        </tr>`;
+
+      if (state.expandedRegion !== r.region) return mainRow;
+
+      const cityBrand = {};
+      state.locationsGeojson.features.forEach(f => {
+        const p = f.properties;
+        if (p.region !== r.region || !selected.includes(p.brand)) return;
+        const city = (p.city || "Unknown").trim();
+        if (!cityBrand[city]) cityBrand[city] = { total: 0 };
+        cityBrand[city][p.brand] = (cityBrand[city][p.brand] || 0) + 1;
+        cityBrand[city].total++;
+      });
+      const topCities = Object.entries(cityBrand).sort((a, b) => b[1].total - a[1].total).slice(0, 10);
+      const cityTable = `
+        <table class="table">
+          <tr><th>City</th>${selected.map(b => `<th class="num" style="color:${BRAND_COLORS[b]||'#3B5BFE'}">${b.split("'")[0]}</th>`).join("")}<th class="num">Total</th></tr>
+          ${topCities.map(([city, data]) => `
+            <tr class="city-row" data-city="${city}" data-region="${r.region}">
+              <td>${city}</td>
+              ${selected.map(b => `<td class="num">${data[b] || 0}</td>`).join("")}
+              <td class="num" style="font-weight:700">${data.total}</td>
+            </tr>`).join("")}
+        </table>`;
+
+      return `${mainRow}
+        <tr class="region-accordion">
+          <td colspan="${colSpan}">${cityTable}</td>
+        </tr>`;
+    }).join("")}
+  `;
+
+  document.querySelectorAll(".region-row").forEach(row => {
+    row.onclick = () => {
+      const region = row.dataset.region;
+      if (state.expandedRegion === region) {
+        state.expandedRegion = null;
+        state.selectedRegion = null;
+        state.selectedCity = null;
+        flyToRegion(null);
+      } else {
+        state.expandedRegion = region;
+        state.selectedRegion = region;
+        state.selectedCity = null;
+        flyToRegion(region);
+      }
+      refreshAll();
+    };
+  });
+
+  document.querySelectorAll(".city-row").forEach(row => {
+    row.onclick = () => {
+      const region = row.dataset.region;
+      const city = row.dataset.city;
+      state.selectedRegion = region;
+      state.selectedCity = city;
+      state.expandedRegion = region;
+      flyToCityOrData(city, region);
+      refreshAll();
+    };
+  });
 }
 
 function refreshRegionPanel() {
@@ -1664,35 +1747,6 @@ function wireUI() {
   document.querySelectorAll(".sidebar-btn[data-tab]").forEach(b => b.addEventListener("click", () => setTab(b.dataset.tab)));
   document.querySelectorAll(".rp-tab").forEach(b => b.addEventListener("click", () => setTab(b.dataset.tab)));
 
-  document.getElementById("countrySelect").addEventListener("change", e => setCountry(e.target.value));
-
-  document.getElementById("regionSelect").addEventListener("change", e => {
-    state.selectedRegion = e.target.value || null;
-    state.selectedCity = null;
-    buildCitySelect(state.selectedRegion);
-    flyToRegion(state.selectedRegion);
-    refreshAll();
-  });
-
-  document.getElementById("citySelect").addEventListener("change", e => {
-    state.selectedCity = e.target.value || null;
-    if (state.selectedCity) flyToCityOrData(state.selectedCity, state.selectedRegion);
-    else if (state.selectedRegion) flyToRegion(state.selectedRegion);
-    rebuildLocationsLayer();
-  });
-
-  const clearRegionSelection = () => {
-    state.selectedRegion = null;
-    state.selectedCity = null;
-    document.getElementById("regionSelect").value = "";
-    document.getElementById("citySelectorWrap").style.display = "none";
-    flyToRegion(null);
-    refreshAll();
-  };
-  document.getElementById("clearRegion").onclick = clearRegionSelection;
-  const clearRegionDeep = document.getElementById("clearRegionDeep");
-  if (clearRegionDeep) clearRegionDeep.onclick = clearRegionSelection;
-
   document.querySelectorAll("[data-region-sort]").forEach(btn => {
     btn.addEventListener("click", () => {
       document.querySelectorAll("[data-region-sort]").forEach(b => b.classList.remove("active"));
@@ -1760,8 +1814,8 @@ async function main() {
     buildRegionGrid(); // Pre-compute region lookup grid
     computeUnlocatedStores();
     buildBrandList();
-    buildRegionSelect();
     buildBrandSelects();
+    setCountry("england");
     wireUI();
     initMap();
     refreshAll();

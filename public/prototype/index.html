@@ -67,38 +67,6 @@
 
     <!-- Right panel -->
     <div class="right-panel" id="rightPanel">
-      <!-- Country & Region selectors (always visible) -->
-      <div class="rp-geo-bar">
-        <div class="geo-selectors">
-          <div class="geo-selector">
-            <div class="geo-label">Country</div>
-            <select id="countrySelect" class="geo-select">
-              <option value="england" selected>Great Britain</option>
-              <option value="uae" disabled>UAE · Soon</option>
-              <option value="spain" disabled>Spain · Soon</option>
-              <option value="poland" disabled>Poland · Soon</option>
-              <option value="hungary" disabled>Hungary · Soon</option>
-              <option value="mexico" disabled>Mexico · Soon</option>
-              <option value="turkiye" disabled>Türkiye · Soon</option>
-              <option value="romania" disabled>Romania · Soon</option>
-              <option value="czech" disabled>Czech Republic · Soon</option>
-            </select>
-          </div>
-          <div class="geo-selector">
-            <div class="geo-label">Region</div>
-            <select id="regionSelect" class="geo-select">
-              <option value="">All Regions</option>
-            </select>
-          </div>
-          <div class="geo-selector" id="citySelectorWrap" style="display:none">
-            <div class="geo-label">City</div>
-            <select id="citySelect" class="geo-select">
-              <option value="">All Cities</option>
-            </select>
-          </div>
-        </div>
-      </div>
-
       <div class="rp-header">
         <div class="rp-tabs">
           <button class="rp-tab active" data-tab="overview">Overview</button>
@@ -139,115 +107,11 @@
           </div>
         </div>
 
-        <!-- Region detail -->
-        <div class="rp-section" id="regionDetailSection">
+        <div class="rp-section" id="regionTableSection">
           <div class="rp-section-header">
-            <span id="selectedRegionText">Region Details</span>
-            <button class="rp-clear-btn hidden" id="clearRegion">✕</button>
+            <span>Regional Coverage & Competitive Structure</span>
           </div>
-          <div id="regionEmpty" class="rp-empty">Select a region from the dropdown or click the map.</div>
-          <div id="regionDetails" class="hidden">
-            <div class="rp-kpi-grid compact">
-              <div class="rp-kpi-card small"><div class="rp-kpi-value" id="regionTotal">—</div><div class="rp-kpi-label">Locations</div></div>
-              <div class="rp-kpi-card small"><div class="rp-kpi-value" id="regionTopBrand">—</div><div class="rp-kpi-label" id="regionTopBrandHint">Top Brand</div></div>
-              <div class="rp-kpi-card small"><div class="rp-kpi-value" id="regionDensity">—</div><div class="rp-kpi-label">Per 1k km²</div></div>
-            </div>
-            <div class="rp-table-section">
-              <div class="rp-table-title">Brand Mix</div>
-              <table class="table" id="regionBrandTable"></table>
-            </div>
-            <div class="rp-table-section">
-              <div class="rp-table-title">Top Cities</div>
-              <table class="table" id="regionCityTable"></table>
-            </div>
-          </div>
-        </div>
-
-        <div class="rp-section" id="compareSection">
-          <div class="rp-section">
-            <p class="rp-desc" id="compareDesc">Head-to-head brand analysis with market share, regional presence, and competitive positioning.</p>
-
-            <!-- Compare KPIs -->
-            <div class="rp-kpi-grid" id="compareKpis" style="margin-bottom:14px"></div>
-
-            <!-- Market Share Bars -->
-            <div class="rp-table-section">
-              <div class="rp-table-title" id="compareShareTitle">📊 Market Share</div>
-              <div id="compareShareBars" class="share-bars"></div>
-            </div>
-
-            <!-- Leaderboard -->
-            <div class="rp-table-section">
-              <div class="rp-table-title" id="compareLeaderTitle">🏆 Brand Leaderboard</div>
-              <table class="table" id="compareTable"></table>
-            </div>
-
-            <!-- Regional Presence Matrix -->
-            <div class="rp-table-section">
-              <div class="rp-table-title" id="compareMatrixTitle">🗺️ Regional Presence Matrix</div>
-              <div id="compareMatrix" class="compare-matrix"></div>
-            </div>
-
-            <!-- Concentration Analysis -->
-            <div class="rp-table-section">
-              <div class="rp-table-title" id="compareConcentrationTitle">🎯 Concentration Analysis</div>
-              <table class="table" id="compareConcentration"></table>
-            </div>
-
-            <!-- Key Insights -->
-            <div class="rp-table-section">
-              <div class="rp-table-title">💡 Key Insights</div>
-              <div id="compareInsights" class="compare-insights"></div>
-            </div>
-
-            <!-- Region-specific deep-dive (shown when region selected) -->
-            <div class="rp-table-section" id="compareRegionDeepDive" style="display:none">
-              <div class="rp-table-title" id="compareRegionDeepTitle">📍 Region Deep Dive</div>
-              <div id="compareRegionDeepContent"></div>
-            </div>
-          </div>
-        </div>
-
-        <div class="rp-section" id="regionListSection">
-          <div class="rp-section-header">
-            <span>All Regions</span>
-          </div>
-          <table class="table" id="regionListTable"></table>
-        </div>
-
-        <div class="rp-section" id="regionRankSection">
-          <div class="rp-section-header">
-            <span>Regional Ranking</span>
-            <div class="rp-header-actions">
-              <button class="rp-link-btn active" data-region-sort="density">Density</button>
-              <span class="rp-link-sep">·</span>
-              <button class="rp-link-btn" data-region-sort="total">Total</button>
-            </div>
-          </div>
-          <div class="rp-kpi-grid compact" id="regionKpis" style="margin-bottom:10px">
-            <div class="rp-kpi-card small"><div class="rp-kpi-value" id="regionKpiDensity">—</div><div class="rp-kpi-label">Density / 1k km²</div></div>
-            <div class="rp-kpi-card small"><div class="rp-kpi-value" id="regionKpiTotal">—</div><div class="rp-kpi-label">Locations</div></div>
-            <div class="rp-kpi-card small"><div class="rp-kpi-value" id="regionKpiLeader">—</div><div class="rp-kpi-label" id="regionKpiLeaderHint">Top Brand</div></div>
-          </div>
-          <table class="table" id="regionRankTable"></table>
-        </div>
-
-        <div class="rp-section" id="regionDrilldownSection">
-          <div class="rp-section-header">
-            <span id="regionDrilldownTitle">Region Drilldown</span>
-            <button class="rp-clear-btn hidden" id="clearRegionDeep">✕</button>
-          </div>
-          <div id="regionDrilldownEmpty" class="rp-empty">Select a region to view top cities and brand mix.</div>
-          <div id="regionDrilldownContent" class="hidden">
-            <div class="rp-table-section">
-              <div class="rp-table-title">Top Cities</div>
-              <table class="table" id="regionDrilldownCityTable"></table>
-            </div>
-            <div class="rp-table-section">
-              <div class="rp-table-title">Brand Mix</div>
-              <table class="table" id="regionDrilldownBrandTable"></table>
-            </div>
-          </div>
+          <table class="table" id="regionTable"></table>
         </div>
       </div>
 
