@@ -95,9 +95,39 @@
         <!-- Brands section -->
         <div class="rp-section" id="brandsSection">
           <div class="rp-section-header">
-            <span>Brands</span>
+            <span>Base Brand</span>
           </div>
           <div id="brandList" class="brand-list"></div>
+        </div>
+
+        <div class="rp-section">
+          <div class="rp-section-header">
+            <span>Compare Brand</span>
+          </div>
+          <div class="control-group">
+            <label for="compareToggle">Compare</label>
+            <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
+              <label class="toggle-switch">
+                <input type="checkbox" id="compareToggle" />
+                <span class="toggle-slider"></span>
+              </label>
+              <select id="secondaryBrandSelect" class="geo-select" style="min-width:180px;"></select>
+            </div>
+          </div>
+        </div>
+
+        <div class="rp-section">
+          <div class="rp-section-header">
+            <span>Coverage Metric</span>
+          </div>
+          <div class="control-group">
+            <label for="coverageViewSelect">Metric</label>
+            <select id="coverageViewSelect">
+              <option value="coverage">Coverage %</option>
+              <option value="covered_pop">Covered population</option>
+              <option value="overlap">Overlap intensity</option>
+            </select>
+          </div>
         </div>
 
         <div class="rp-section" id="gbSummarySection">
@@ -110,14 +140,6 @@
         <div class="rp-section" id="regionTableSection">
           <div class="rp-section-header">
             <span>Regional Coverage & Competitive Structure</span>
-          </div>
-          <div class="control-group">
-            <label for="coverageViewSelect">Coverage metric</label>
-            <select id="coverageViewSelect">
-              <option value="coverage">Coverage %</option>
-              <option value="covered_pop">Covered population</option>
-              <option value="overlap">Overlap intensity</option>
-            </select>
           </div>
           <div class="rp-footnote">Coverage is an estimated model based on store density, brand diversity, and population density. Overlap increases when estimated coverage areas exceed total region area.</div>
           <table class="table" id="regionTable"></table>
@@ -184,7 +206,7 @@
               </div>
               <div class="heatmap-row hidden" id="secondaryBrandRow">
                 <div class="geo-label">Secondary Brand</div>
-                <select id="secondaryBrandSelect" class="geo-select"></select>
+                <select class="geo-select" disabled></select>
               </div>
               <div class="heatmap-legend-bar">
                 <div class="heatmap-legend-label">Fewer stores</div>
