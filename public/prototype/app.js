@@ -320,7 +320,14 @@ function buildBrandList() {
       <span class="brand-count" data-brand="${b}">${fmtInt(total)}</span>
     `;
     el.onclick = () => {
-      if (state.selectedBrands.has(b)) {
+      if (state.selectedBrands.size === state.metrics.brands.length) {
+        state.selectedBrands = new Set([b]);
+        document.querySelectorAll(".brand-pill").forEach(pill => {
+          const name = pill.dataset.brand;
+          if (!name) return;
+          pill.classList.toggle("inactive", name !== b);
+        });
+      } else if (state.selectedBrands.has(b)) {
         if (state.selectedBrands.size > 1) {
           state.selectedBrands.delete(b);
           el.classList.add("inactive");
@@ -771,10 +778,10 @@ function buildHexLayer() {
     state.hexLayer = L.geoJSON({ type: "FeatureCollection", features: displayHexes }, {
       style: f => {
         return {
-          fillColor: hexFillDensity(f.properties.displayValue, maxCount, f.properties.estPop, maxPop),
+          fillColor: hexFillHeatmap(Math.min(1, f.properties.displayValue / (maxCount || 1))),
           fillOpacity: 1,
           weight: 1,
-          color: hexStrokeDensity(f.properties.displayValue, maxCount, f.properties.estPop, maxPop),
+          color: hexStrokeHeatmap(Math.min(1, f.properties.displayValue / (maxCount || 1))),
           opacity: 1
         };
       },
@@ -852,10 +859,10 @@ function rebuildLocationsLayer() {
     }
   }
 
-  if (!showDots && zoom < 11 && !regionFilter) return;
+  // Always show some locations on national view
   if (feats.length === 0) return;
 
-  const maxMarkers = zoom < 11 ? 6000 : 3000;
+  const maxMarkers = zoom < 9 ? 1500 : zoom < 11 ? 4000 : 3000;
   const displayFeats = feats.length > maxMarkers ? feats.slice(0, maxMarkers) : feats;
 
   const dotRadius = zoom >= 13 ? 6 : zoom >= 11 ? 4 : zoom >= 9 ? 2.5 : 1.5;
@@ -1046,16 +1053,50 @@ function renderRegionTable() {
           <td class="num">${r.coverage.coveragePct ? fmtPct(r.coverage.coveragePct) : "—"}</td>
           <td class="num">${r.coverage.overlapIndex ? r.coverage.overlapIndex.toFixed(2) : "—"}</td>
         </tr>`;
-      return mainRow;
+      if (state.expandedRegion !== r.region) return mainRow;
+
+      const cityBrand = {};
+      state.locationsGeojson.features.forEach(f => {
+        const p = f.properties;
+        if (p.region !== r.region || !selected.includes(p.brand)) return;
+        const city = (p.city || "Unknown").trim();
+        if (!cityBrand[city]) cityBrand[city] = { total: 0, counts: {} };
+        cityBrand[city].counts[p.brand] = (cityBrand[city].counts[p.brand] || 0) + 1;
+        cityBrand[city].total++;
+      });
+      const topCities = Object.entries(cityBrand).sort((a, b) => b[1].total - a[1].total).slice(0, 10);
+      const cityTable = `
+        <table class="table">
+          <tr><th>City</th>${selected.map(b => `<th class="num" style="color:${BRAND_COLORS[b]||'#3B5BFE'}">${b.split("'")[0]}</th>`).join("")}<th class="num">Total</th></tr>
+          ${topCities.map(([city, data]) => `
+            <tr class="city-row" data-city="${city}" data-region="${r.region}">
+              <td>${city}</td>
+              ${selected.map(b => `<td class="num">${data.counts[b] || 0}</td>`).join("")}
+              <td class="num" style="font-weight:700">${data.total}</td>
+            </tr>`).join("")}
+        </table>`;
+
+      return `${mainRow}
+        <tr class="region-accordion">
+          <td colspan="${colSpan}">${cityTable}</td>
+        </tr>`;
     }).join("")}
   `;
 
   document.querySelectorAll(".region-row").forEach(row => {
     row.onclick = () => {
       const region = row.dataset.region;
-      state.selectedRegion = region;
-      state.selectedCity = null;
-      flyToRegion(region);
+      if (state.expandedRegion === region) {
+        state.expandedRegion = null;
+        state.selectedRegion = null;
+        state.selectedCity = null;
+        flyToRegion(null);
+      } else {
+        state.expandedRegion = region;
+        state.selectedRegion = region;
+        state.selectedCity = null;
+        flyToRegion(region);
+      }
       refreshAll();
     };
   });
@@ -1144,7 +1185,7 @@ function renderCityBreakdown() {
   table.innerHTML = `
     <tr><th>City</th>${selected.map(b => `<th class="num" style="color:${BRAND_COLORS[b]||'#3B5BFE'}">${b.split("'")[0]}</th>`).join("")}<th class="num">Total</th></tr>
     ${topCities.map(([city, data]) => `
-      <tr class="city-row" data-city="${city}" data-region="${region || ''}">
+      <tr class="city-row ${state.selectedCity && city.toLowerCase() === state.selectedCity.toLowerCase() ? 'active' : ''}" data-city="${city}" data-region="${region || ''}">
         <td>${city}</td>
         ${selected.map(b => `<td class="num">${data.counts[b] || 0}</td>`).join("")}
         <td class="num" style="font-weight:700">${data.total}</td>

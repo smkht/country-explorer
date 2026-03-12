@@ -148,6 +148,7 @@ body { font-family: var(--sans); background: var(--bg); color: var(--text); -web
 .table tr:hover td { background: var(--panel2); }
 .rank-row { cursor: pointer; }
 .rank-row.active td { background: var(--accent-light); }
+.city-row.active td { background: rgba(59, 91, 254, 0.12); font-weight: 700; }
 .table .brand-dot-cell { display: flex; align-items: center; gap: 6px; }
 .table .city-link { color: var(--accent); cursor: pointer; font-weight: 600; }
 .table .city-link:hover { text-decoration: underline; }
