@@ -1,4 +1,4 @@
-/* Country Explorer — vanilla JS + Leaflet + Turf.js honeycomb + heatmap + guesstimate */
+/* Country Explorer — vanilla JS + Leaflet + Turf.js honeycomb + heatmap */
 
 const BRAND_COLORS = {
   "Domino's": "#3B5BFE",
@@ -167,7 +167,7 @@ const state = {
   compareMode: "all",
   secondaryBrand: null,
   country: "england",
-  guesstimateMode: false,
+  regionSort: "density",
   // Spatial index for fast viewport queries
   _pointIndex: null
 };
@@ -261,7 +261,7 @@ function setCountry(country) {
   document.getElementById("regionSelect").disabled = !isEngland;
   document.getElementById("mapLegend").classList.toggle("hidden", !isEngland);
 
-  ["kpiSection", "brandsSection", "metricSection", "regionDetailSection", "heatmapSection", "guesstimateSection", "deepreviewContent"]
+  ["kpiSection", "brandsSection", "metricSection", "regionDetailSection", "heatmapSection", "regionRankSection", "regionDrilldownSection", "deepreviewContent"]
     .forEach(id => {
       const el = document.getElementById(id);
       if (!el) return;
@@ -658,26 +658,6 @@ function buildHexLayer() {
   const regionFilter = state.selectedRegion;
   const isHeatmap = state.heatmapMode && state.primaryBrand;
 
-// ── Guesstimate opportunity colors (purple gradient) ──
-function hexStyleGuesstimate(props) {
-  const rank = props.oppRank || 0;
-  const count = props.adjustedCount || 0;
-  const pop = props.estPop || 0;
-
-  if (rank === 0) {
-    if (count === 0 && pop === 0) {
-      return { fillColor: 'hsla(0,0%,94%,0.04)', fillOpacity: 1, weight: 0, color: 'transparent', opacity: 0 };
-    }
-    return { fillColor: 'hsla(230,20%,92%,0.06)', fillOpacity: 1, weight: 0, color: 'transparent', opacity: 0 };
-  }
-
-  if (rank === 1) {
-    return { fillColor: 'hsla(270, 85%, 60%, 0.55)', fillOpacity: 1, weight: 0, color: 'transparent', opacity: 0 };
-  }
-
-  return { fillColor: 'hsla(270, 65%, 72%, 0.35)', fillOpacity: 1, weight: 0, color: 'transparent', opacity: 0 };
-}
-
   const bounds = state.map.getBounds().pad(0.15);
   const bbox = [bounds.getWest(), bounds.getSouth(), bounds.getEast(), bounds.getNorth()];
 
@@ -728,67 +708,11 @@ function hexStyleGuesstimate(props) {
 
     state._hexMaxPop = Math.max(1, ...hexGrid.features.map(h => h.properties.estPop || 0));
 
-    // Guesstimate + heatmap
-    const isGuessHeat = state.guesstimateMode;
-    if (isGuessHeat) {
-      hexGrid.features.forEach(hex => {
-        const pop = hex.properties.estPop || 0;
-        const density = hexAreaKm2 > 0 ? pop / hexAreaKm2 : 0;
-        const comp = hex.properties.competitor || 0;
-        const primary = hex.properties.primary || 0;
-        const total = hex.properties.adjustedTotal || 0;
-
-        const minDensity = zoom >= 12 ? 20 : zoom >= 10 ? 80 : 200;
-        const minPop = zoom >= 12 ? 10 : zoom >= 10 ? 100 : 500;
-        if (density < minDensity || pop < minPop) {
-          hex.properties.opportunity = 0;
-          hex.properties.oppRank = 0;
-          return;
-        }
-
-        const compSignal = Math.min(1, comp / 5);
-        const primaryGap = total > 0 ? Math.max(0, 1 - (primary / Math.max(1, total))) : 1;
-        const popPerStore = total > 0 ? pop / total : pop;
-        const underserved = Math.min(1, popPerStore / 15000);
-        const notPacked = Math.max(0, 1 - (total / 15));
-
-        const rawOpp = (compSignal * 0.3 + primaryGap * 0.25 + underserved * 0.25 + notPacked * 0.2);
-        hex.properties.opportunity = rawOpp;
-        hex.properties.oppRank = 0;
-      });
-
-      let candidates = hexGrid.features.filter(h => h.properties.opportunity > 0.15);
-      if (regionFilter) {
-        candidates = candidates.filter(h => fastRegionLookup(h._cx, h._cy) === regionFilter);
-      }
-
-      candidates.sort((a, b) => (b.properties.opportunity || 0) - (a.properties.opportunity || 0));
-      const majorCount = Math.min(5, Math.max(3, Math.floor(candidates.length * 0.15)));
-      const midCount = Math.min(7, Math.max(5, Math.floor(candidates.length * 0.25)));
-      candidates.slice(0, majorCount).forEach(h => { h.properties.oppRank = 1; });
-      candidates.slice(majorCount, majorCount + midCount).forEach(h => { h.properties.oppRank = 2; });
-    }
-
-    const showAll = zoom >= 12;
-    const displayHexes = isGuessHeat && !showAll
-      ? hexGrid.features.filter(h => (h.properties.oppRank > 0) || h.properties.total > 0)
-      : hexGrid.features;
-
+    const displayHexes = hexGrid.features;
     state.hexLayer = L.geoJSON({ type: "FeatureCollection", features: displayHexes }, {
       style: f => {
         const p = f.properties;
         const maxPop = state._hexMaxPop || 1;
-
-        if (isGuessHeat) {
-          if (p.oppRank > 0) return hexStyleGuesstimate(p);
-          return {
-            fillColor: hexFillHeatmap(p.ratio),
-            fillOpacity: 0.6,
-            weight: 0.5,
-            color: hexStrokeHeatmap(p.ratio),
-            opacity: 0.5
-          };
-        }
 
         if (p.total === 0) {
           const pop = p.estPop || 0;
@@ -806,14 +730,6 @@ function hexStyleGuesstimate(props) {
       },
       onEachFeature: (feature, layer) => {
         const p = feature.properties;
-        if (isGuessHeat && p.oppRank > 0) {
-          const label = p.oppRank === 1 ? '🔥 Top Opportunity' : '⚡ Moderate Opportunity';
-          const pop = p.estPop || 0;
-          const popK = pop > 1000 ? (pop / 1000).toFixed(1) + 'k' : pop;
-          layer.bindTooltip(`${label}<br>${state.primaryBrand}: ${p.primary} · Competitors: ${p.competitor}<br>Pop: ~${popK}`, { sticky: true });
-          return;
-        }
-
         if (p.total === 0) {
           const pop = p.estPop || 0;
           const popK = pop > 1000 ? (pop / 1000).toFixed(1) + 'k' : pop;
@@ -838,7 +754,6 @@ function hexStyleGuesstimate(props) {
     let maxCount = 0;
     let maxPop = 0;
     const isDensityMetric = state.metric === "density";
-    const isGuesstimate = state.guesstimateMode && !isHeatmap;
     hexGrid.features.forEach((hex, i) => {
       const pts = hexPoints[i];
       hex.properties.count = pts.length;
@@ -855,62 +770,9 @@ function hexStyleGuesstimate(props) {
       if (hex.properties.estPop > maxPop) maxPop = hex.properties.estPop;
     });
 
-    // Guesstimate: compute proximity-aware opportunity scores
-    if (isGuesstimate) {
-      hexGrid.features.forEach(hex => {
-        const pop = hex.properties.estPop || 0;
-        const adj = hex.properties.adjustedCount || 0;
-        const density = hexAreaKm2 > 0 ? pop / hexAreaKm2 : 0;
-
-        const minDensity = zoom >= 12 ? 20 : zoom >= 10 ? 80 : 200;
-        const minPop = zoom >= 12 ? 10 : zoom >= 10 ? 100 : 500;
-        if (density < minDensity || pop < minPop) {
-          hex.properties.opportunity = 0;
-          hex.properties.oppRank = 0;
-          return;
-        }
-
-        const storeSignal = Math.min(1, adj / 4);
-        const popPerStore = adj > 0 ? pop / adj : pop;
-        const underserved = Math.min(1, popPerStore / 15000);
-        const notPacked = Math.max(0, 1 - (adj / 12));
-
-        const rawOpp = (storeSignal * 0.25 + underserved * 0.4 + notPacked * 0.2 + Math.min(1, density / 2000) * 0.15);
-        hex.properties.opportunity = rawOpp;
-        hex.properties.oppRank = 0;
-      });
-
-      let candidates = hexGrid.features.filter(h => h.properties.opportunity > 0.15);
-      if (regionFilter) {
-        candidates = candidates.filter(h => fastRegionLookup(h._cx, h._cy) === regionFilter);
-      }
-
-      candidates.sort((a, b) => (b.properties.opportunity || 0) - (a.properties.opportunity || 0));
-      const majorCount = Math.min(5, Math.max(3, Math.floor(candidates.length * 0.15)));
-      const midCount = Math.min(7, Math.max(5, Math.floor(candidates.length * 0.25)));
-      candidates.slice(0, majorCount).forEach(h => { h.properties.oppRank = 1; });
-      candidates.slice(majorCount, majorCount + midCount).forEach(h => { h.properties.oppRank = 2; });
-    }
-
-    const showAll = zoom >= 12;
-    const displayHexes = isGuesstimate && !showAll
-      ? hexGrid.features.filter(h => (h.properties.oppRank > 0) || h.properties.count > 0)
-      : hexGrid.features;
-
+    const displayHexes = hexGrid.features;
     state.hexLayer = L.geoJSON({ type: "FeatureCollection", features: displayHexes }, {
       style: f => {
-        if (isGuesstimate && f.properties.oppRank > 0) {
-          return hexStyleGuesstimate(f.properties);
-        }
-        if (isGuesstimate) {
-          return {
-            fillColor: hexFillDensity(f.properties.displayValue, maxCount, f.properties.estPop, maxPop),
-            fillOpacity: 0.5,
-            weight: 0.5,
-            color: hexStrokeDensity(f.properties.displayValue, maxCount, f.properties.estPop, maxPop),
-            opacity: 0.5
-          };
-        }
         return {
           fillColor: hexFillDensity(f.properties.displayValue, maxCount, f.properties.estPop, maxPop),
           fillOpacity: 1,
@@ -929,12 +791,7 @@ function hexStyleGuesstimate(props) {
         const unlocNote = unloc > 0.1 ? ` (+${unloc.toFixed(1)} est.)` : '';
         const popLine = pop > 0 ? `<br>Pop: ~${popK}` + (adjCount > 0 ? ` · 1 per ${popPer} people` : '') : '';
         const densityLine = isDensityMetric ? `<br>Density: ${feature.properties.displayValue.toFixed(1)} per 1k km²` : '';
-        if (isGuesstimate && feature.properties.oppRank > 0) {
-          const label = feature.properties.oppRank === 1 ? '🔥 Top Opportunity' : '⚡ Moderate Opportunity';
-          layer.bindTooltip(`${label}<br>${c} location${c !== 1 ? 's' : ''}${unlocNote}${popLine}`, { sticky: true });
-        } else {
-          layer.bindTooltip(`${c} location${c !== 1 ? 's' : ''}${unlocNote}${popLine}${densityLine}`, { sticky: true });
-        }
+        layer.bindTooltip(`${c} location${c !== 1 ? 's' : ''}${unlocNote}${popLine}${densityLine}`, { sticky: true });
       }
     }).addTo(state.map);
   }
@@ -948,14 +805,7 @@ function hexStyleGuesstimate(props) {
 function updateLegend() {
   const title = document.getElementById("legendTitle");
   const scale = document.getElementById("legendScale");
-  if (state.heatmapMode && state.guesstimateMode) {
-    title.textContent = `⚡ ${state.primaryBrand} · Expansion Opportunities`;
-    scale.innerHTML = `
-      <span class="legend-block" style="background:hsla(270,65%,72%,0.35)"></span>
-      <span class="legend-block" style="background:hsla(270,85%,60%,0.55)"></span>
-      <span style="font-size:9px;color:var(--muted);margin-left:4px">Mid → Top</span>
-    `;
-  } else if (state.heatmapMode) {
+  if (state.heatmapMode) {
     title.textContent = `${state.primaryBrand} vs competitors`;
     scale.innerHTML = `
       <span class="legend-block" style="background:#E53935"></span>
@@ -963,13 +813,6 @@ function updateLegend() {
       <span class="legend-block" style="background:#FFEB3B"></span>
       <span class="legend-block" style="background:#8BC34A"></span>
       <span class="legend-block" style="background:#4CAF50"></span>
-    `;
-  } else if (state.guesstimateMode) {
-    title.textContent = "⚡ Expansion Opportunities";
-    scale.innerHTML = `
-      <span class="legend-block" style="background:hsla(270,65%,72%,0.35)"></span>
-      <span class="legend-block" style="background:hsla(270,85%,60%,0.55)"></span>
-      <span style="font-size:9px;color:var(--muted);margin-left:4px">Mid → Top</span>
     `;
   } else if (state.metric === "density") {
     title.textContent = "Density per 1,000 km²";
@@ -981,7 +824,7 @@ function updateLegend() {
       <span class="legend-block" style="background:hsla(170,90%,37%,0.85)"></span>
     `;
   } else {
-    title.textContent = "Location density";
+    title.textContent = "Location count";
     scale.innerHTML = `
       <span class="legend-block" style="background:hsla(230,85%,92%,0.5)"></span>
       <span class="legend-block" style="background:hsla(230,85%,80%,0.6)"></span>
@@ -1069,9 +912,9 @@ function refreshAll() {
   buildHexLayer();
   rebuildLocationsLayer();
   refreshRegionPanel();
+  refreshRegionalAnalytics();
   refreshCompareTab();
   refreshExportInfo();
-  if (state.guesstimateMode) refreshGuesstimate();
 }
 
 function refreshKPIs() {
@@ -1175,6 +1018,133 @@ function refreshRegionPanel() {
   });
 }
 
+function refreshRegionalAnalytics() {
+  const selected = selectedArr();
+  const rows = state.metrics.regions.map(region => {
+    const counts = state.metrics.region_brand_counts[region] || {};
+    let total = 0;
+    selected.forEach(b => { total += (counts[b] || 0); });
+    const area = state.metrics.region_area_km2[region] || 1;
+    const density = total / (area / 1000);
+    let topBrand = null, topCount = -1;
+    selected.forEach(b => {
+      const v = counts[b] || 0;
+      if (v > topCount) { topCount = v; topBrand = b; }
+    });
+    if (total === 0) { topBrand = null; topCount = 0; }
+    const topShare = total > 0 ? topCount / total : 0;
+    return { region, label: region.replace(" (England)", ""), total, density, topBrand, topCount, topShare };
+  });
+
+  rows.sort((a, b) => {
+    if (state.regionSort === "total") {
+      return (b.total - a.total) || (b.density - a.density);
+    }
+    return (b.density - a.density) || (b.total - a.total);
+  });
+
+  const rankTable = document.getElementById("regionRankTable");
+  rankTable.innerHTML = `
+    <tr><th>#</th><th>Region</th><th class="num">Density</th><th class="num">Locations</th><th>Leader</th></tr>
+    ${rows.map((r, i) => `
+      <tr class="rank-row ${r.region === state.selectedRegion ? 'active' : ''}" data-region="${r.region}">
+        <td style="color:var(--muted);font-weight:700">${i + 1}</td>
+        <td><strong>${r.label}</strong></td>
+        <td class="num">${r.density.toFixed(1)}</td>
+        <td class="num">${fmtInt(r.total)}</td>
+        <td>${r.topBrand ? `<div class=\"brand-dot-cell\"><span class=\"brand-dot\" style=\"background:${BRAND_COLORS[r.topBrand]||'#3B5BFE'};width:8px;height:8px\"></span>${r.topBrand} · ${fmtInt(r.topCount)}</div>` : "—"}</td>
+      </tr>
+    `).join("")}
+  `;
+
+  document.querySelectorAll(".rank-row").forEach(row => {
+    row.onclick = () => {
+      const region = row.dataset.region;
+      state.selectedRegion = region;
+      state.selectedCity = null;
+      document.getElementById("regionSelect").value = region;
+      buildCitySelect(region);
+      flyToRegion(region);
+      refreshAll();
+    };
+  });
+
+  const focusRegion = state.selectedRegion ? rows.find(r => r.region === state.selectedRegion) : rows[0];
+  if (focusRegion) {
+    document.getElementById("regionKpiDensity").textContent = focusRegion.density.toFixed(1);
+    document.getElementById("regionKpiTotal").textContent = fmtInt(focusRegion.total);
+    document.getElementById("regionKpiLeader").textContent = focusRegion.topBrand || "—";
+    document.getElementById("regionKpiLeaderHint").textContent = focusRegion.topBrand && focusRegion.total > 0
+      ? `${fmtPct(focusRegion.topShare)} share`
+      : "Top Brand";
+  }
+
+  const drillTitle = document.getElementById("regionDrilldownTitle");
+  const drillEmpty = document.getElementById("regionDrilldownEmpty");
+  const drillContent = document.getElementById("regionDrilldownContent");
+  const drillClear = document.getElementById("clearRegionDeep");
+
+  if (!state.selectedRegion) {
+    drillTitle.textContent = "Region Drilldown";
+    drillEmpty.classList.remove("hidden");
+    drillContent.classList.add("hidden");
+    if (drillClear) drillClear.classList.add("hidden");
+    return;
+  }
+
+  const region = state.selectedRegion;
+  drillTitle.textContent = `Region Drilldown — ${region.replace(" (England)", "")}`;
+  drillEmpty.classList.add("hidden");
+  drillContent.classList.remove("hidden");
+  if (drillClear) drillClear.classList.remove("hidden");
+
+  const counts = state.metrics.region_brand_counts[region] || {};
+  const total = selected.reduce((s, b) => s + (counts[b] || 0), 0);
+  const brandRows = selected.map(b => ({ brand: b, count: counts[b] || 0 }))
+    .sort((a, b) => b.count - a.count);
+  document.getElementById("regionDrilldownBrandTable").innerHTML = `
+    <tr><th>Brand</th><th class="num">Count</th><th class="num">Share</th></tr>
+    ${brandRows.map(r => {
+      const share = total ? r.count / total : 0;
+      return `<tr>
+        <td><div class="brand-dot-cell"><span class="brand-dot" style="background:${BRAND_COLORS[r.brand]||'#3B5BFE'};width:8px;height:8px\"></span>${r.brand}</div></td>
+        <td class="num">${fmtInt(r.count)}</td>
+        <td class="num">${fmtPct(share)}</td>
+      </tr>`;
+    }).join("")}
+  `;
+
+  const feats = state.locationsGeojson.features.filter(f => f.properties.region === region && selected.includes(f.properties.brand));
+  const cityCounts = {};
+  feats.forEach(f => {
+    const c = (f.properties.city || "Unknown").trim();
+    cityCounts[c] = (cityCounts[c] || 0) + 1;
+  });
+  const topCities = Object.entries(cityCounts).map(([city, count]) => ({ city, count }))
+    .sort((a, b) => b.count - a.count).slice(0, 10);
+  const cityNullCount = (state.cityNullStores && state.cityNullStores[region] ? state.cityNullStores[region]._total : 0);
+  const cityNotice = cityNullCount > 0
+    ? `<tr><td colspan=\"2\" style=\"padding:6px 8px;font-size:10px;color:var(--muted);background:var(--panel2);border-radius:6px;border:1px solid var(--border);line-height:1.4\">📐 <strong>Data quality:</strong> ${cityNullCount} stores have coordinates but no city name — included in map density but excluded from city-level analysis.</td></tr>`
+    : `<tr><td colspan=\"2\" style=\"padding:6px 8px;font-size:10px;color:var(--muted);background:var(--panel2);border-radius:6px;border:1px solid var(--border);line-height:1.4\">✅ <strong>Data quality:</strong> All stores have city names assigned.</td></tr>`;
+  document.getElementById("regionDrilldownCityTable").innerHTML = `
+    ${cityNotice}
+    <tr><th>City</th><th class="num">Locations</th></tr>
+    ${topCities.map(r => `<tr><td><span class="city-link" data-city="${r.city}" data-region="${region}">${r.city}</span></td><td class="num">${fmtInt(r.count)}</td></tr>`).join("")}
+  `;
+
+  document.querySelectorAll(".city-link").forEach(el => {
+    el.onclick = () => {
+      const cityName = el.dataset.city;
+      const cityRegion = el.dataset.region;
+      state.selectedCity = cityName;
+      const citySelect = document.getElementById("citySelect");
+      if (citySelect) citySelect.value = cityName;
+      flyToCityOrData(cityName, cityRegion);
+      rebuildLocationsLayer();
+    };
+  });
+}
+
 // Enhanced city fly — falls back to calculating centroid from data
 function flyToCityOrData(cityName, region) {
   const cities = REGION_CITIES[region] || [];
@@ -1203,8 +1173,8 @@ function refreshCompareTab() {
 
   // Update titles with region context
   document.getElementById("compareDesc").textContent = regionLabel
-    ? `Head-to-head brand analysis in ${regionLabel} — market share, positioning, and competitive insights.`
-    : `Head-to-head brand analysis with market share, regional presence, and competitive positioning.`;
+    ? `Head-to-head brand analysis in ${regionLabel} — market share, regional presence, and concentration stats.`
+    : `Head-to-head brand analysis with market share, regional presence, and concentration stats.`;
   document.getElementById("compareShareTitle").textContent = `📊 Market Share in ${scopeLabel}`;
   document.getElementById("compareLeaderTitle").textContent = `🏆 Brand Leaderboard — ${scopeLabel}`;
   document.getElementById("compareMatrixTitle").textContent = regionLabel ? `🗺️ City Breakdown — ${regionLabel}` : `🗺️ Regional Presence Matrix`;
@@ -1366,12 +1336,12 @@ function refreshCompareTab() {
   }
   const smallest = rows[rows.length - 1];
   if (smallest && rows.length > 1) {
-    insights.push(`<div class="insight-card"><span class="insight-icon">📉</span><strong>${smallest.brand}</strong> has the smallest footprint${regionLabel ? ' in ' + regionLabel : ''} at ${fmtInt(smallest.total)} locations — potential growth opportunity.</div>`);
+    insights.push(`<div class="insight-card"><span class="insight-icon">📉</span><strong>${smallest.brand}</strong> has the smallest footprint${regionLabel ? ' in ' + regionLabel : ''} at ${fmtInt(smallest.total)} locations.</div>`);
   }
   if (!region) {
     const highLondon = rows.filter(r => r.londonShare > 0.18);
     if (highLondon.length > 0) {
-      insights.push(`<div class="insight-card"><span class="insight-icon">🏙️</span>${highLondon.map(r => `<strong>${r.brand}</strong>`).join(" and ")} heavily concentrated in London (${highLondon.map(r => fmtPct(r.londonShare)).join(", ")}), leaving regional markets open.</div>`);
+      insights.push(`<div class="insight-card"><span class="insight-icon">🏙️</span>${highLondon.map(r => `<strong>${r.brand}</strong>`).join(" and ")} have high London concentration (${highLondon.map(r => fmtPct(r.londonShare)).join(", ")} of their total footprint).</div>`);
     }
   }
   if (region) {
@@ -1381,96 +1351,16 @@ function refreshCompareTab() {
       const natShare = (state.metrics.brand_totals[r.brand] || 0) / natTotalAll;
       const diff = r.share - natShare;
       if (diff > 0.03) {
-        insights.push(`<div class="insight-card"><span class="insight-icon">📈</span><strong>${r.brand}</strong> over-indexes in ${regionLabel} by +${(diff * 100).toFixed(1)}pp vs national average — strong local position.</div>`);
+        insights.push(`<div class="insight-card"><span class="insight-icon">📈</span><strong>${r.brand}</strong> is above national share in ${regionLabel} by +${(diff * 100).toFixed(1)}pp.</div>`);
       } else if (diff < -0.03) {
-        insights.push(`<div class="insight-card"><span class="insight-icon">📉</span><strong>${r.brand}</strong> under-indexes in ${regionLabel} by ${(diff * 100).toFixed(1)}pp — room to grow here.</div>`);
+        insights.push(`<div class="insight-card"><span class="insight-icon">📉</span><strong>${r.brand}</strong> is below national share in ${regionLabel} by ${(diff * 100).toFixed(1)}pp.</div>`);
       }
     });
   }
   document.getElementById("compareInsights").innerHTML = insights.join("");
 
-  // ── Guesstimate Side-by-Side Brand Comparison ──
-  refreshCompareGuesstimate(rows, totalAll, scopeLabel, region);
-
   // ── Region Deep Dive (extra data when region selected) ──
   refreshCompareRegionDeep(rows, region, regionLabel);
-}
-
-function refreshCompareGuesstimate(rows, totalAll, scopeLabel, region) {
-  const section = document.getElementById("compareGuesstimateSection");
-  if (rows.length < 2) { section.style.display = "none"; return; }
-  section.style.display = "block";
-
-  // Pick top 2 brands for face-off
-  const a = rows[0];
-  const b = rows[1];
-  const allBrands = state.metrics.brands;
-  const regions = state.metrics.regions;
-  const brandCounts = state.metrics.region_brand_counts;
-
-  // Per-region dominance
-  let aWins = 0, bWins = 0, ties = 0;
-  const regionBattle = regions.map(r => {
-    const ac = (brandCounts[r] || {})[a.brand] || 0;
-    const bc = (brandCounts[r] || {})[b.brand] || 0;
-    if (ac > bc) aWins++; else if (bc > ac) bWins++; else ties++;
-    const winner = ac > bc ? a.brand : bc > ac ? b.brand : 'Tied';
-    return { label: r.replace(" (England)", ""), ac, bc, winner };
-  });
-
-  // Strengths & weaknesses
-  const aStrengths = regionBattle.filter(r => r.ac > r.bc).sort((x, y) => (y.ac - y.bc) - (x.ac - x.bc)).slice(0, 3);
-  const bStrengths = regionBattle.filter(r => r.bc > r.ac).sort((x, y) => (y.bc - y.ac) - (x.bc - x.ac)).slice(0, 3);
-
-  // Density comparison
-  const areas = state.metrics.region_area_km2;
-  const aDensity = (state.metrics.brand_totals[a.brand] || 0) / (Object.values(areas).reduce((s, v) => s + v, 0) / 1000);
-  const bDensity = (state.metrics.brand_totals[b.brand] || 0) / (Object.values(areas).reduce((s, v) => s + v, 0) / 1000);
-
-  let html = `
-    <div class="guesstimate-badge">⚡ ${a.brand} vs ${b.brand} — ${scopeLabel}</div>
-    <div class="faceoff-grid">
-      <div class="faceoff-card" style="border-left:3px solid ${BRAND_COLORS[a.brand]}">
-        <div class="faceoff-brand">${a.brand}</div>
-        <div class="faceoff-stat">${fmtInt(a.total)} stores · ${fmtPct(a.share)} share</div>
-        <div class="faceoff-metric">Density: ${aDensity.toFixed(1)} per 1k km²</div>
-        <div class="faceoff-wins">🏆 Leads in ${aWins}/9 regions</div>
-      </div>
-      <div class="faceoff-vs">VS</div>
-      <div class="faceoff-card" style="border-left:3px solid ${BRAND_COLORS[b.brand]}">
-        <div class="faceoff-brand">${b.brand}</div>
-        <div class="faceoff-stat">${fmtInt(b.total)} stores · ${fmtPct(b.share)} share</div>
-        <div class="faceoff-metric">Density: ${bDensity.toFixed(1)} per 1k km²</div>
-        <div class="faceoff-wins">🏆 Leads in ${bWins}/9 regions</div>
-      </div>
-    </div>
-
-    <div class="faceoff-strengths">
-      <div>
-        <div class="faceoff-section-title" style="color:${BRAND_COLORS[a.brand]}">💪 ${a.brand} Strongest</div>
-        ${aStrengths.map(r => `<div class="faceoff-row"><span>${r.label}</span><span class="faceoff-lead">+${r.ac - r.bc} ahead</span></div>`).join("")}
-      </div>
-      <div>
-        <div class="faceoff-section-title" style="color:${BRAND_COLORS[b.brand]}">💪 ${b.brand} Strongest</div>
-        ${bStrengths.map(r => `<div class="faceoff-row"><span>${r.label}</span><span class="faceoff-lead">+${r.bc - r.ac} ahead</span></div>`).join("")}
-      </div>
-    </div>
-
-    <table class="table" style="margin-top:10px">
-      <tr><th>Region</th><th class="num" style="color:${BRAND_COLORS[a.brand]}">${a.brand}</th><th class="num" style="color:${BRAND_COLORS[b.brand]}">${b.brand}</th><th>Winner</th></tr>
-      ${regionBattle.map(r => {
-        const winColor = r.winner === a.brand ? BRAND_COLORS[a.brand] : r.winner === b.brand ? BRAND_COLORS[b.brand] : 'var(--muted)';
-        return `<tr>
-          <td>${r.label}</td>
-          <td class="num" style="${r.ac > r.bc ? 'font-weight:700' : ''}">${r.ac}</td>
-          <td class="num" style="${r.bc > r.ac ? 'font-weight:700' : ''}">${r.bc}</td>
-          <td style="color:${winColor};font-weight:700;font-size:11px">${r.winner}</td>
-        </tr>`;
-      }).join("")}
-    </table>
-  `;
-
-  document.getElementById("compareGuesstimateContent").innerHTML = html;
 }
 
 function refreshCompareRegionDeep(rows, region, regionLabel) {
@@ -1564,337 +1454,6 @@ function refreshExportInfo() {
   document.getElementById("exportCountInfo").textContent = fmtInt(feats.length);
 }
 
-// ════════════════════════════════════════════
-// ── GUESSTIMATE ENGINE (data-driven insights)
-// ════════════════════════════════════════════
-
-function generateGuesstimateData() {
-  const primary = state.primaryBrand;
-  const isHeatmap = state.heatmapMode && primary;
-  const selected = selectedArr();
-  const region = state.selectedRegion;
-  const regionLabel = region ? region.replace(" (England)", "") : "England";
-  const regions = state.metrics.regions;
-  const brandCounts = state.metrics.region_brand_counts;
-  const areas = state.metrics.region_area_km2;
-  const allBrands = state.metrics.brands;
-
-  const focusBrand = isHeatmap ? primary : (selected.length === 1 ? selected[0] : null);
-  const competitors = focusBrand
-    ? allBrands.filter(b => b !== focusBrand && (isHeatmap || selected.includes(b)))
-    : [];
-
-  const regionData = regions.map(r => {
-    const counts = brandCounts[r] || {};
-    const area = areas[r] || 1;
-    const focusCount = focusBrand ? (counts[focusBrand] || 0) : 0;
-    const compCount = competitors.reduce((s, b) => s + (counts[b] || 0), 0);
-    const totalSelected = selected.reduce((s, b) => s + (counts[b] || 0), 0);
-    const allCount = allBrands.reduce((s, b) => s + (counts[b] || 0), 0);
-    const density = allCount / (area / 1000);
-    const densitySelected = totalSelected / (area / 1000);
-    const focusShare = allCount > 0 ? focusCount / allCount : 0;
-    const compShare = allCount > 0 ? compCount / allCount : 0;
-    return { region: r, label: r.replace(" (England)", ""), area, focusCount, compCount, totalSelected, allCount, density, densitySelected, focusShare, compShare };
-  });
-
-  const londonDensity = regionData.find(r => r.region === "London")?.density || 1;
-  const avgDensity = regionData.reduce((s, r) => s + r.density, 0) / regionData.length;
-  const saturation = Math.min(99, Math.round((avgDensity / londonDensity) * 100));
-
-  const focusTotal = focusBrand ? (state.metrics.brand_totals[focusBrand] || 0) : 0;
-  const totalAll = allBrands.reduce((s, b) => s + (state.metrics.brand_totals[b] || 0), 0);
-  const nationalShare = totalAll > 0 ? focusTotal / totalAll : 0;
-
-  const avgShare = focusBrand ? focusTotal / totalAll : 0;
-  const regionInsights = regionData.map(r => {
-    const gapVsAvg = avgShare > 0 ? Math.max(0, 1 - (r.focusShare / avgShare)) : 0;
-    const densityFactor = Math.max(0, 1 - (r.density / londonDensity));
-    const opportunity = focusBrand
-      ? Math.round(Math.min(100, (gapVsAvg * 60 + densityFactor * 40)))
-      : Math.round(Math.min(100, densityFactor * 100));
-    const advice = focusBrand
-      ? (r.focusShare < avgShare * 0.7
-        ? `Under-penetrated: ${focusBrand} holds ${fmtPct(r.focusShare)} vs ${fmtPct(avgShare)} national avg`
-        : r.focusShare > avgShare * 1.3
-          ? `Strong position: ${fmtPct(r.focusShare)} share, defend & optimise`
-          : `Balanced: close to national average share`)
-      : (r.density < avgDensity * 0.6
-        ? `Low saturation (${r.density.toFixed(1)}/1k km²) — strong entry opportunity`
-        : r.density > avgDensity * 1.5
-          ? `Highly saturated (${r.density.toFixed(1)}/1k km²) — competitive, harder entry`
-          : `Moderate saturation (${r.density.toFixed(1)}/1k km²) — viable with differentiation`);
-    return { ...r, opportunity, advice };
-  }).sort((a, b) => b.opportunity - a.opportunity);
-
-  // Whitespace cities
-  const cityData = {};
-  state.locationsGeojson.features.forEach(f => {
-    const p = f.properties;
-    const city = (p.city || "").trim();
-    if (!city || city === "Unknown") return;
-    if (region && p.region !== region) return;
-    if (!cityData[city]) cityData[city] = { total: 0, focus: 0, comp: 0, brands: {}, region: p.region };
-    cityData[city].total++;
-    if (p.brand === focusBrand) cityData[city].focus++;
-    if (competitors.includes(p.brand)) cityData[city].comp++;
-    cityData[city].brands[p.brand] = (cityData[city].brands[p.brand] || 0) + 1;
-  });
-
-  let whitespace;
-  if (focusBrand) {
-    whitespace = Object.entries(cityData)
-      .filter(([, d]) => d.total >= 5)
-      .map(([city, d]) => {
-        const ratio = d.total > 0 ? d.focus / d.total : 0;
-        const score = Math.round(Math.min(99, Math.max(5, (1 - ratio) * 70 + (d.comp > d.focus * 2 ? 25 : 10))));
-        const topComp = Object.entries(d.brands).filter(([b]) => b !== focusBrand).sort((a, b) => b[1] - a[1])[0];
-        const reason = d.focus === 0
-          ? `No ${focusBrand} stores — ${topComp ? topComp[0] + ' has ' + topComp[1] : 'competitors active'}`
-          : `Only ${d.focus} store${d.focus > 1 ? 's' : ''} vs ${d.comp} competitors — ${topComp ? topComp[0] + ' leads with ' + topComp[1] : 'gap exists'}`;
-        return { city, score, reason, focus: d.focus, comp: d.comp, total: d.total };
-      })
-      .sort((a, b) => b.score - a.score).slice(0, 8);
-  } else {
-    // Market entrant mode: cities with fewest brands or lowest density
-    whitespace = Object.entries(cityData)
-      .filter(([, d]) => d.total >= 3)
-      .map(([city, d]) => {
-        const brandCount = Object.keys(d.brands).length;
-        const dominant = Object.entries(d.brands).sort((a, b) => b[1] - a[1])[0];
-        const dominantShare = dominant ? dominant[1] / d.total : 0;
-        const diversityGap = Math.max(0, allBrands.length - brandCount) / allBrands.length;
-        const score = Math.round(Math.min(99, Math.max(5, diversityGap * 60 + (1 - dominantShare) * 40)));
-        const reason = brandCount < allBrands.length
-          ? `Only ${brandCount}/${allBrands.length} chains present — ${dominant[0]} leads (${dominant[1]} stores)`
-          : `All chains present but ${dominant[0]} dominates (${fmtPct(dominantShare)})`;
-        return { city, score, reason, focus: brandCount, comp: d.total, total: d.total, dominantShare };
-      })
-      .sort((a, b) => b.score - a.score).slice(0, 10);
-  }
-
-  const strongRegions = regionInsights.filter(r => focusBrand ? r.focusShare >= avgShare : r.density >= avgDensity).sort((a, b) => focusBrand ? b.focusShare - a.focusShare : b.density - a.density);
-  const weakRegions = regionInsights.filter(r => focusBrand ? r.focusShare < avgShare : r.density < avgDensity).sort((a, b) => focusBrand ? a.focusShare - b.focusShare : a.density - b.density);
-
-  // Market entrant extras
-  let entrantData = null;
-  if (!focusBrand) {
-    const brandTotals = allBrands.map(b => ({ brand: b, total: state.metrics.brand_totals[b] || 0, share: (state.metrics.brand_totals[b] || 0) / totalAll })).sort((a, b) => b.total - a.total);
-    const hhi = Math.round(brandTotals.reduce((s, b) => s + Math.pow(b.share * 100, 2), 0));
-    const hhiLabel = hhi > 2500 ? 'Highly Concentrated' : hhi > 1500 ? 'Moderately Concentrated' : 'Competitive';
-    const avgStoresPerBrand = Math.round(totalAll / allBrands.length);
-    const underserved = [...regionData].sort((a, b) => a.density - b.density).slice(0, 3);
-    const mostCompetitive = [...regionData].sort((a, b) => b.density - a.density).slice(0, 3);
-    entrantData = { brandTotals, hhi, hhiLabel, avgStoresPerBrand, underserved, mostCompetitive };
-  }
-
-  // Unlocated store summary
-  const unlocatedTotal = state.totalUnlocated || 0;
-  const unlocatedByRegion = state.unlocatedStores || {};
-  const cityNullTotal = Object.values(state.cityNullStores || {}).reduce((s, r) => s + r._total, 0);
-
-  return {
-    focusBrand, saturation, nationalShare, focusTotal, totalAll,
-    regionInsights, whitespace, strongRegions, weakRegions, regionLabel,
-    isHeatmap, competitors, entrantData, regionData, avgDensity, londonDensity,
-    unlocatedTotal, cityNullTotal, unlocatedByRegion
-  };
-}
-
-function refreshGuesstimate() {
-  const panel = document.getElementById("guesstimatePanel");
-  if (!state.guesstimateMode) { panel.classList.add("hidden"); return; }
-  panel.classList.remove("hidden");
-
-  const d = generateGuesstimateData();
-  const brandLabel = d.focusBrand || "Selected Brands";
-  const hasHeatmap = d.isHeatmap && d.focusBrand;
-  const isEntrant = !d.focusBrand;
-
-  let html = '';
-  const dataQualityNote = (d.unlocatedTotal > 0 || d.cityNullTotal > 0) ? `
-    <div style="font-size:10px;color:var(--muted);padding:4px 8px;background:var(--panel2);border-radius:6px;border:1px solid var(--border);margin-bottom:8px;line-height:1.4">
-      📐 <strong>Data quality:</strong> ${d.unlocatedTotal > 0 ? `${d.unlocatedTotal} stores in metrics without exact coordinates — weighted proportionally by population into regional estimates.` : ''} ${d.cityNullTotal > 0 ? `${d.cityNullTotal} stores have coordinates but no city name — included in map density but excluded from city-level analysis.` : ''}
-    </div>` : `
-    <div style="font-size:10px;color:var(--muted);padding:4px 8px;background:var(--panel2);border-radius:6px;border:1px solid var(--border);margin-bottom:8px;line-height:1.4">
-      ✅ <strong>Data quality:</strong> All stores have city names and coordinates assigned.
-    </div>`;
-
-  if (isEntrant) {
-    const e = d.entrantData;
-    html = `
-      <div class="guesstimate-badge">⚡ Market Entry Analysis · New Competitor Intelligence</div>
-      ${dataQualityNote}
-
-      <div class="rp-kpi-grid" style="margin-bottom:12px">
-        <div class="rp-kpi-card"><div class="rp-kpi-value">${fmtInt(d.totalAll)}</div><div class="rp-kpi-label">Total Market Size</div></div>
-        <div class="rp-kpi-card"><div class="rp-kpi-value">${e.brandTotals.length}</div><div class="rp-kpi-label">Active Chains</div></div>
-        <div class="rp-kpi-card"><div class="rp-kpi-value">${d.saturation}%</div><div class="rp-kpi-label">Market Saturation</div></div>
-        <div class="rp-kpi-card"><div class="rp-kpi-value">${fmtInt(e.avgStoresPerBrand)}</div><div class="rp-kpi-label">Avg per Chain</div></div>
-      </div>
-
-      <div class="rp-table-section">
-        <div class="rp-table-title">📊 Market Concentration</div>
-        <div style="display:flex;align-items:center;gap:10px;margin-bottom:8px;padding:8px 10px;background:var(--panel2);border-radius:8px;border:1px solid var(--border)">
-          <div style="font-size:22px;font-weight:800;color:var(--text)">${e.hhi}</div>
-          <div>
-            <div style="font-size:12px;font-weight:700;color:${e.hhi > 2500 ? '#E53935' : e.hhi > 1500 ? '#FF9800' : '#43A047'}">${e.hhiLabel}</div>
-            <div style="font-size:10px;color:var(--muted)">HHI Index (0–10,000)</div>
-          </div>
-        </div>
-        <table class="table">
-          <tr><th>#</th><th>Chain</th><th class="num">Stores</th><th class="num">Share</th><th>Position</th></tr>
-          ${e.brandTotals.map((b, i) => `<tr>
-            <td style="color:var(--muted);font-weight:700">${i + 1}</td>
-            <td><div class="brand-dot-cell"><span class="brand-dot" style="background:${BRAND_COLORS[b.brand]||'#3B5BFE'};width:8px;height:8px"></span><strong>${b.brand}</strong></div></td>
-            <td class="num">${fmtInt(b.total)}</td>
-            <td class="num">${fmtPct(b.share)}</td>
-            <td style="font-size:10px;color:var(--muted)">${i === 0 ? '👑 Market leader' : i < 3 ? '⚡ Major player' : '📍 Challenger'}</td>
-          </tr>`).join("")}
-        </table>
-      </div>
-
-      <div class="rp-table-section">
-        <div class="rp-table-title">🟢 Best Regions for Market Entry</div>
-        <p style="font-size:11px;color:var(--muted);margin-bottom:6px;line-height:1.4">Regions with the lowest competitive density — most room for a new entrant.</p>
-        <table class="table">
-          <tr><th>Region</th><th class="num">Stores</th><th class="num">Density</th><th class="num">Opportunity</th><th>Assessment</th></tr>
-          ${d.regionInsights.slice(0, 5).map(r => `<tr>
-            <td><strong>${r.label}</strong></td>
-            <td class="num">${fmtInt(r.allCount)}</td>
-            <td class="num">${r.density.toFixed(1)}</td>
-            <td class="num">
-              <div class="opp-bar-wrap">
-                <div class="opp-bar" style="width:${r.opportunity}%;background:${r.opportunity > 65 ? '#43A047' : r.opportunity > 35 ? '#FF9800' : '#E53935'}"></div>
-                <span>${r.opportunity}%</span>
-              </div>
-            </td>
-            <td style="font-size:10px;color:var(--muted)">${r.advice}</td>
-          </tr>`).join("")}
-        </table>
-      </div>
-
-      <div class="rp-table-section">
-        <div class="rp-table-title">🔴 Most Saturated Regions</div>
-        <p style="font-size:11px;color:var(--muted);margin-bottom:6px;line-height:1.4">Avoid unless you have a strong differentiator. Established chains dominate here.</p>
-        <table class="table">
-          <tr><th>Region</th><th class="num">Stores</th><th class="num">Density</th><th>Warning</th></tr>
-          ${e.mostCompetitive.map(r => `<tr>
-            <td><strong>${r.label}</strong></td>
-            <td class="num">${fmtInt(r.allCount)}</td>
-            <td class="num" style="color:#E53935;font-weight:700">${r.density.toFixed(1)}</td>
-            <td style="font-size:10px;color:var(--muted)">${r.density > d.avgDensity * 2 ? 'Extremely competitive — high barrier' : 'Above-average competition'}</td>
-          </tr>`).join("")}
-        </table>
-      </div>
-
-      <div class="rp-table-section">
-        <div class="rp-table-title">🏙️ Best Cities for a New Entrant</div>
-        <p style="font-size:11px;color:var(--muted);margin-bottom:6px;line-height:1.4">Cities with fewest competing chains — room for a new player to capture share.</p>
-        <table class="table">
-          <tr><th>City</th><th class="num">Chains</th><th class="num">Stores</th><th class="num">Score</th><th>Why</th></tr>
-          ${d.whitespace.map(w => `<tr>
-            <td><strong>${w.city}</strong></td>
-            <td class="num">${w.focus}/${e.brandTotals.length}</td>
-            <td class="num">${w.total}</td>
-            <td class="num"><span class="opp-score ${w.score >= 75 ? 'high' : w.score >= 50 ? 'med' : 'low'}">${w.score}</span></td>
-            <td style="font-size:10px;color:var(--muted)">${w.reason}</td>
-          </tr>`).join("")}
-        </table>
-      </div>
-
-      <div class="rp-table-section">
-        <div class="rp-table-title">💡 Entry Strategy Insights</div>
-        <div class="compare-insights">
-          <div class="insight-card"><span class="insight-icon">📊</span>The QSR market in ${d.regionLabel} has <strong>${fmtInt(d.totalAll)} locations</strong> across ${e.brandTotals.length} chains. The market is <strong>${e.hhiLabel.toLowerCase()}</strong> (HHI: ${e.hhi})${e.hhi < 2500 ? ' — there is room for a new competitor.' : ' — dominated by top players.'}</div>
-          <div class="insight-card"><span class="insight-icon">🎯</span>${e.underserved[0] ? `<strong>${e.underserved[0].label}</strong> has the lowest store density (${e.underserved[0].density.toFixed(1)}/1k km²) — ideal for a new entrant seeking low competition.` : 'All regions show moderate competition.'}</div>
-          <div class="insight-card"><span class="insight-icon">⚠️</span>${e.mostCompetitive[0] ? `Avoid starting in <strong>${e.mostCompetitive[0].label}</strong> — density of ${e.mostCompetitive[0].density.toFixed(1)}/1k km² means heavy incumbent presence. Focus on underserved areas first.` : ''}</div>
-          <div class="insight-card"><span class="insight-icon">🚀</span>A new entrant matching the average chain size would need ~<strong>${fmtInt(e.avgStoresPerBrand)} locations</strong> for national parity. Consider starting with ${Math.max(1, Math.round(e.avgStoresPerBrand * 0.1))}–${Math.round(e.avgStoresPerBrand * 0.2)} stores in the top opportunity regions.</div>
-        </div>
-      </div>
-    `;
-  } else {
-    html = `
-      <div class="guesstimate-badge">⚡ Guesstimate · Based on Real Store Data${hasHeatmap ? ' + Heatmap' : ''}</div>
-      ${dataQualityNote}
-
-      <div class="rp-kpi-grid" style="margin-bottom:12px">
-        <div class="rp-kpi-card"><div class="rp-kpi-value">${fmtInt(d.focusTotal)}</div><div class="rp-kpi-label">${brandLabel} Stores</div></div>
-        <div class="rp-kpi-card"><div class="rp-kpi-value">${fmtPct(d.nationalShare)}</div><div class="rp-kpi-label">National Share</div></div>
-        <div class="rp-kpi-card"><div class="rp-kpi-value">${d.saturation}%</div><div class="rp-kpi-label">Market Saturation</div></div>
-        <div class="rp-kpi-card"><div class="rp-kpi-value">${fmtInt(d.totalAll)}</div><div class="rp-kpi-label">Total Market</div></div>
-      </div>
-
-      ${hasHeatmap ? `
-      <div class="rp-table-section">
-        <div class="rp-table-title">💪 Strongest Regions for ${brandLabel}</div>
-        <table class="table">
-          <tr><th>Region</th><th class="num">${brandLabel}</th><th class="num">Competitors</th><th class="num">Share</th></tr>
-          ${d.strongRegions.slice(0, 4).map(r => `<tr>
-            <td>${r.label}</td>
-            <td class="num" style="color:#43A047;font-weight:700">${fmtInt(r.focusCount)}</td>
-            <td class="num">${fmtInt(r.compCount)}</td>
-            <td class="num"><strong>${fmtPct(r.focusShare)}</strong></td>
-          </tr>`).join("")}
-        </table>
-      </div>
-
-      <div class="rp-table-section">
-        <div class="rp-table-title">⚠️ Weakest Regions — Growth Targets</div>
-        <table class="table">
-          <tr><th>Region</th><th class="num">${brandLabel}</th><th class="num">Gap vs Avg</th><th>Advice</th></tr>
-          ${d.weakRegions.slice(0, 4).map(r => {
-            const gap = d.nationalShare > 0 ? Math.round((1 - r.focusShare / d.nationalShare) * 100) : 0;
-            return `<tr>
-              <td>${r.label}</td>
-              <td class="num" style="color:#E53935;font-weight:700">${fmtInt(r.focusCount)}</td>
-              <td class="num"><span class="opp-score low">-${gap}%</span></td>
-              <td style="font-size:10px;color:var(--muted)">${r.advice}</td>
-            </tr>`;
-          }).join("")}
-        </table>
-      </div>
-      ` : ''}
-
-      <div class="rp-table-section">
-        <div class="rp-table-title">🎯 Whitespace — Where to Expand ${brandLabel}</div>
-        ${d.whitespace.length > 0 ? `
-        <table class="table">
-          <tr><th>City</th><th class="num">You</th><th class="num">Comp.</th><th class="num">Score</th><th>Why</th></tr>
-          ${d.whitespace.map(w => `<tr>
-            <td><strong>${w.city}</strong></td>
-            <td class="num">${w.focus}</td>
-            <td class="num">${w.comp}</td>
-            <td class="num"><span class="opp-score ${w.score >= 75 ? 'high' : w.score >= 50 ? 'med' : 'low'}">${w.score}</span></td>
-            <td style="font-size:10px;color:var(--muted)">${w.reason}</td>
-          </tr>`).join("")}
-        </table>
-        ` : `<div class="rp-empty">Select a region or enable heatmap for whitespace analysis</div>`}
-      </div>
-
-      <div class="rp-table-section">
-        <div class="rp-table-title">🗺️ Regional Opportunity Index</div>
-        <table class="table">
-          <tr><th>Region</th><th class="num">Stores</th><th class="num">Density</th><th class="num">Opportunity</th></tr>
-          ${d.regionInsights.map(r => `<tr>
-            <td>${r.label}</td>
-            <td class="num">${fmtInt(r.totalSelected)}</td>
-            <td class="num">${r.density.toFixed(1)}</td>
-            <td class="num">
-              <div class="opp-bar-wrap">
-                <div class="opp-bar" style="width:${r.opportunity}%;background:${r.opportunity > 65 ? '#43A047' : r.opportunity > 35 ? '#FF9800' : '#E53935'}"></div>
-                <span>${r.opportunity}%</span>
-              </div>
-            </td>
-          </tr>`).join("")}
-        </table>
-      </div>
-    `;
-  }
-
-  panel.innerHTML = html;
-}
-
 // ── Export ──
 function exportFiltered(type) {
   const selected = selectedArr();
@@ -1945,7 +1504,7 @@ function wireUI() {
     rebuildLocationsLayer();
   });
 
-  document.getElementById("clearRegion").onclick = () => {
+  const clearRegionSelection = () => {
     state.selectedRegion = null;
     state.selectedCity = null;
     document.getElementById("regionSelect").value = "";
@@ -1953,6 +1512,9 @@ function wireUI() {
     flyToRegion(null);
     refreshAll();
   };
+  document.getElementById("clearRegion").onclick = clearRegionSelection;
+  const clearRegionDeep = document.getElementById("clearRegionDeep");
+  if (clearRegionDeep) clearRegionDeep.onclick = clearRegionSelection;
 
   document.querySelectorAll(".metric-toggle").forEach(btn => {
     btn.addEventListener("click", () => {
@@ -1963,41 +1525,37 @@ function wireUI() {
     });
   });
 
+  document.querySelectorAll("[data-region-sort]").forEach(btn => {
+    btn.addEventListener("click", () => {
+      document.querySelectorAll("[data-region-sort]").forEach(b => b.classList.remove("active"));
+      btn.classList.add("active");
+      state.regionSort = btn.dataset.regionSort;
+      refreshRegionalAnalytics();
+    });
+  });
+
   // Heatmap toggle
   document.getElementById("heatmapToggle").addEventListener("change", e => {
     state.heatmapMode = e.target.checked;
     document.getElementById("heatmapSettings").classList.toggle("hidden", !state.heatmapMode);
     buildHexLayer();
     updateLegend();
-    if (state.guesstimateMode) refreshGuesstimate();
   });
 
   document.getElementById("primaryBrandSelect").addEventListener("change", e => {
     state.primaryBrand = e.target.value;
     buildHexLayer();
-    if (state.guesstimateMode) refreshGuesstimate();
   });
 
   document.getElementById("compareModeSelect").addEventListener("change", e => {
     state.compareMode = e.target.value;
     document.getElementById("secondaryBrandRow").classList.toggle("hidden", e.target.value !== "pick");
     buildHexLayer();
-    if (state.guesstimateMode) refreshGuesstimate();
   });
 
   document.getElementById("secondaryBrandSelect").addEventListener("change", e => {
     state.secondaryBrand = e.target.value;
     buildHexLayer();
-    if (state.guesstimateMode) refreshGuesstimate();
-  });
-
-  // Guesstimate toggle
-  document.getElementById("guesstimateToggle").addEventListener("change", e => {
-    state.guesstimateMode = e.target.checked;
-    buildHexLayer();
-    updateLegend();
-    if (state.guesstimateMode) refreshGuesstimate();
-    else document.getElementById("guesstimatePanel").classList.add("hidden");
   });
 
   document.getElementById("selectAllBrands").onclick = () => setAllBrands(state.metrics.brands);

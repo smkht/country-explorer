@@ -20,7 +20,7 @@
       <button class="sidebar-btn active" data-tab="overview" title="Coverage Map">
         <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/></svg>
       </button>
-      <button class="sidebar-btn" data-tab="deepreview" title="Deep Review">
+      <button class="sidebar-btn" data-tab="deepreview" title="Regional Analytics">
         <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 3h6a4 4 0 014 4v14a3 3 0 00-3-3H2z"/><path d="M22 3h-6a4 4 0 00-4 4v14a3 3 0 013-3h7z"/></svg>
       </button>
       <button class="sidebar-btn" data-tab="compare" title="Brand Compare">
@@ -108,7 +108,7 @@
       <div class="rp-header">
         <div class="rp-tabs">
           <button class="rp-tab active" data-tab="overview">Overview</button>
-          <button class="rp-tab" data-tab="deepreview">Deep Review</button>
+          <button class="rp-tab" data-tab="deepreview">Regional Analytics</button>
           <button class="rp-tab" data-tab="compare">Compare</button>
           <button class="rp-tab" data-tab="export">Export</button>
         </div>
@@ -186,10 +186,45 @@
         </div>
       </div>
 
-      <!-- ====== DEEP REVIEW ====== -->
+      <!-- ====== REGIONAL ANALYTICS ====== -->
       <div class="rp-content hidden" id="deepreviewContent">
         <div class="rp-section">
-          <p class="rp-desc">Advanced competitive analysis tools — heatmap overlays and AI-powered expansion insights.</p>
+          <p class="rp-desc">Region-first analytics with concrete store counts, density, and brand leadership.</p>
+        </div>
+
+        <div class="rp-section" id="regionRankSection">
+          <div class="rp-section-header">
+            <span>Regional Ranking</span>
+            <div class="rp-header-actions">
+              <button class="rp-link-btn active" data-region-sort="density">Density</button>
+              <span class="rp-link-sep">·</span>
+              <button class="rp-link-btn" data-region-sort="total">Total</button>
+            </div>
+          </div>
+          <div class="rp-kpi-grid compact" id="regionKpis" style="margin-bottom:10px">
+            <div class="rp-kpi-card small"><div class="rp-kpi-value" id="regionKpiDensity">—</div><div class="rp-kpi-label">Density / 1k km²</div></div>
+            <div class="rp-kpi-card small"><div class="rp-kpi-value" id="regionKpiTotal">—</div><div class="rp-kpi-label">Locations</div></div>
+            <div class="rp-kpi-card small"><div class="rp-kpi-value" id="regionKpiLeader">—</div><div class="rp-kpi-label" id="regionKpiLeaderHint">Top Brand</div></div>
+          </div>
+          <table class="table" id="regionRankTable"></table>
+        </div>
+
+        <div class="rp-section" id="regionDrilldownSection">
+          <div class="rp-section-header">
+            <span id="regionDrilldownTitle">Region Drilldown</span>
+            <button class="rp-clear-btn hidden" id="clearRegionDeep">✕</button>
+          </div>
+          <div id="regionDrilldownEmpty" class="rp-empty">Select a region to view top cities and brand mix.</div>
+          <div id="regionDrilldownContent" class="hidden">
+            <div class="rp-table-section">
+              <div class="rp-table-title">Top Cities</div>
+              <table class="table" id="regionDrilldownCityTable"></table>
+            </div>
+            <div class="rp-table-section">
+              <div class="rp-table-title">Brand Mix</div>
+              <table class="table" id="regionDrilldownBrandTable"></table>
+            </div>
+          </div>
         </div>
 
         <!-- Heatmap mode -->
@@ -201,7 +236,7 @@
               <span class="toggle-slider"></span>
             </label>
           </div>
-          <div class="heatmap-hint" id="heatmapHint">Compare your restaurant chain against competitors on the map. Red hexagons = they have more stores nearby, green = you lead. Instantly spot under-served areas where you could open your next location.</div>
+          <div class="heatmap-hint" id="heatmapHint">Compare your restaurant chain against competitors on the map. Red hexagons mean competitors have more nearby locations; green means you lead by count.</div>
           <div id="heatmapSettings" class="heatmap-settings hidden">
             <div class="heatmap-row">
               <div class="geo-label">Primary Brand</div>
@@ -224,19 +259,6 @@
               <div class="heatmap-legend-label">More stores</div>
             </div>
           </div>
-        </div>
-
-        <!-- Guesstimate mode -->
-        <div class="rp-section guesstimate-section-highlight" id="guesstimateSection">
-          <div class="rp-section-header">
-            <span>⚡ Guesstimate</span>
-            <label class="toggle-switch">
-              <input type="checkbox" id="guesstimateToggle" />
-              <span class="toggle-slider"></span>
-            </label>
-          </div>
-          <div class="guesstimate-hint">Get AI-powered expansion advice for your restaurant chain: market saturation scores, whitespace opportunities ranked by city, strongest & weakest regions, and actionable recommendations — all based on real store location data.</div>
-          <div id="guesstimatePanel" class="hidden"></div>
         </div>
 
         <!-- Enterprise-locked features -->
@@ -309,12 +331,6 @@
           <div class="rp-table-section">
             <div class="rp-table-title">💡 Key Insights</div>
             <div id="compareInsights" class="compare-insights"></div>
-          </div>
-
-          <!-- ⚡ Guesstimate Side-by-Side Comparison -->
-          <div class="rp-table-section" id="compareGuesstimateSection" style="display:none">
-            <div class="rp-table-title">⚡ Brand Face-Off — Guesstimate</div>
-            <div id="compareGuesstimateContent"></div>
           </div>
 
           <!-- Region-specific deep-dive (shown when region selected) -->
