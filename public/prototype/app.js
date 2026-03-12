@@ -185,42 +185,30 @@ async function loadJSON(path) {
 
 // ── Hex colors ──
 function hexFillDensity(count, max, pop, maxPop) {
-  const isDensity = state.metric === "density";
   if (!max || count === 0) {
-    // Tint empty cells by population density
     if (pop > 0 && maxPop > 0) {
       const t = Math.min(1, pop / maxPop);
-      const hue = isDensity ? 170 : 230;
-      return `hsla(${hue},30%,${94 - 10 * t}%,${0.08 + 0.18 * t})`;
+      return `hsla(220,40%,${94 - 12 * t}%,${0.08 + 0.18 * t})`;
     }
-    return isDensity ? "hsla(170,20%,92%,0.06)" : "hsla(230,20%,92%,0.06)";
+    return "hsla(220,30%,94%,0.06)";
   }
-  // Power curve for better spread (density values cluster more, so use sqrt)
   const raw = Math.min(1, count / max);
-  const t = isDensity ? Math.pow(raw, 0.5) : Math.pow(raw, 0.7);
-  if (isDensity) {
-    // Teal/cyan gradient for density
-    const l = 85 - 48 * t;
-    const s = 70 + 20 * t;
-    const a = 0.3 + 0.55 * t;
-    return `hsla(170,${s}%,${l}%,${a})`;
-  }
-  const l = 90 - 50 * t;
-  const a = 0.3 + 0.55 * t;
-  return `hsla(230,85%,${l}%,${a})`;
+  const t = Math.pow(raw, 0.6);
+  const l = 92 - 52 * t;
+  const a = 0.25 + 0.6 * t;
+  return `hsla(220,85%,${l}%,${a})`;
 }
 function hexStrokeDensity(count, max, pop, maxPop) {
-  const isDensity = state.metric === "density";
   if (!max || count === 0) {
     if (pop > 0 && maxPop > 0) {
       const t = Math.min(1, pop / maxPop);
-      return isDensity ? `rgba(0,180,160,${0.06 + 0.15 * t})` : `rgba(59,91,254,${0.06 + 0.15 * t})`;
+      return `rgba(59,91,254,${0.06 + 0.15 * t})`;
     }
-    return isDensity ? "rgba(0,180,160,0.08)" : "rgba(59,91,254,0.08)";
+    return "rgba(59,91,254,0.08)";
   }
   const raw = Math.min(1, count / max);
-  const t = isDensity ? Math.pow(raw, 0.5) : Math.pow(raw, 0.7);
-  return isDensity ? `rgba(0,180,160,${0.08 + 0.35 * t})` : `rgba(59,91,254,${0.08 + 0.35 * t})`;
+  const t = Math.pow(raw, 0.6);
+  return `rgba(59,91,254,${0.1 + 0.55 * t})`;
 }
 
 function hexFillHeatmap(ratio) {
@@ -778,10 +766,10 @@ function buildHexLayer() {
     state.hexLayer = L.geoJSON({ type: "FeatureCollection", features: displayHexes }, {
       style: f => {
         return {
-          fillColor: hexFillHeatmap(Math.min(1, f.properties.displayValue / (maxCount || 1))),
+          fillColor: hexFillDensity(f.properties.displayValue, maxCount, f.properties.estPop, maxPop),
           fillOpacity: 1,
           weight: 1,
-          color: hexStrokeHeatmap(Math.min(1, f.properties.displayValue / (maxCount || 1))),
+          color: hexStrokeDensity(f.properties.displayValue, maxCount, f.properties.estPop, maxPop),
           opacity: 1
         };
       },
@@ -794,7 +782,7 @@ function buildHexLayer() {
         const popPer = (adjCount > 0 && pop > 0) ? (pop / adjCount).toLocaleString('en', {maximumFractionDigits: 0}) : '—';
         const unlocNote = unloc > 0.1 ? ` (+${unloc.toFixed(1)} est.)` : '';
         const popLine = pop > 0 ? `<br>Pop: ~${popK}` + (adjCount > 0 ? ` · 1 per ${popPer} people` : '') : '';
-        const overlapLine = `<br>Coverage overlap: ${feature.properties.displayValue.toFixed(1)}`;
+        const overlapLine = `<br>Delivery coverage: ${feature.properties.displayValue.toFixed(1)}`;
         layer.bindTooltip(`${c} location${c !== 1 ? 's' : ''}${unlocNote}${popLine}${overlapLine}`, { sticky: true });
       }
     }).addTo(state.map);
@@ -819,7 +807,7 @@ function updateLegend() {
       <span class="legend-block" style="background:#4CAF50"></span>
     `;
   } else {
-    title.textContent = "Coverage overlap";
+    title.textContent = "Delivery coverage";
     scale.innerHTML = `
       <span class="legend-block" style="background:hsla(230,85%,92%,0.5)"></span>
       <span class="legend-block" style="background:hsla(230,85%,80%,0.6)"></span>
@@ -1049,9 +1037,9 @@ function renderRegionTable() {
           <td class="num">${r.total ? fmtPct(r.leaderShare) : "—"}</td>
           <td class="num">${r.peoplePerStore ? fmtInt(Math.round(r.peoplePerStore)) : "—"}</td>
           <td class="num">${r.income ? fmtGBP(r.income) : "—"}</td>
-          <td class="num">${r.coverage.coveredPop ? fmtInt(Math.round(r.coverage.coveredPop)) : "—"}</td>
-          <td class="num">${r.coverage.coveragePct ? fmtPct(r.coverage.coveragePct) : "—"}</td>
-          <td class="num">${r.coverage.overlapIndex ? r.coverage.overlapIndex.toFixed(2) : "—"}</td>
+          <td class="num">${r.coverage.coveredPop !== null && r.coverage.coveredPop !== undefined ? fmtInt(Math.round(r.coverage.coveredPop)) : "—"}</td>
+          <td class="num">${r.coverage.coveragePct !== null && r.coverage.coveragePct !== undefined ? fmtPct(r.coverage.coveragePct) : "—"}</td>
+          <td class="num">${r.coverage.overlapIndex !== null && r.coverage.overlapIndex !== undefined ? r.coverage.overlapIndex.toFixed(2) : "—"}</td>
         </tr>`;
       if (state.expandedRegion !== r.region) return mainRow;
 
@@ -1146,9 +1134,9 @@ function renderGreatBritainSummary() {
       <td class="num">${countsTotal ? fmtPct(leaderShare) : "—"}</td>
       <td class="num">${peoplePerStore ? fmtInt(Math.round(peoplePerStore)) : "—"}</td>
       <td class="num">${incomeAvg ? fmtGBP(incomeAvg) : "—"}</td>
-      <td class="num">${coverage.coveredPop ? fmtInt(Math.round(coverage.coveredPop)) : "—"}</td>
-      <td class="num">${coverage.coveragePct ? fmtPct(coverage.coveragePct) : "—"}</td>
-      <td class="num">${coverage.overlapIndex ? coverage.overlapIndex.toFixed(2) : "—"}</td>
+      <td class="num">${coverage.coveredPop !== null && coverage.coveredPop !== undefined ? fmtInt(Math.round(coverage.coveredPop)) : "—"}</td>
+      <td class="num">${coverage.coveragePct !== null && coverage.coveragePct !== undefined ? fmtPct(coverage.coveragePct) : "—"}</td>
+      <td class="num">${coverage.overlapIndex !== null && coverage.overlapIndex !== undefined ? coverage.overlapIndex.toFixed(2) : "—"}</td>
     </tr>
   `;
 
@@ -1172,7 +1160,6 @@ function renderCityBreakdown() {
   state.locationsGeojson.features.forEach(f => {
     const p = f.properties;
     if (region && p.region !== region) return;
-    if (cityFilter && (p.city || "").trim().toLowerCase() !== cityFilter.toLowerCase()) return;
     if (!selected.includes(p.brand)) return;
     const city = (p.city || "Unknown").trim();
     if (!cityBrand[city]) cityBrand[city] = { total: 0, counts: {} };
