@@ -1780,9 +1780,13 @@ function rebuildLocationsLayer() {
     );
 
     if (cityFilter) {
-      const cityFeats = feats.filter(
-        f => (f.properties.city || "").trim().toLowerCase() === cityFilter.toLowerCase()
-      );
+      const compareMode = isCoverageCompareMode();
+      const compareBrandLocal = compareMode ? state.compareBrand : null;
+      const cityFeats = feats.filter(f => {
+        // In compare mode, always show compare brand stores from viewport — don't filter by city name
+        if (compareBrandLocal && f.properties.brand === compareBrandLocal) return true;
+        return (f.properties.city || "").trim().toLowerCase() === cityFilter.toLowerCase();
+      });
       if (cityFeats.length >= 1) feats = cityFeats;
     }
   }
