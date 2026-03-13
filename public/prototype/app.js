@@ -2287,14 +2287,6 @@ function refreshKPIs() {
     const compareSummary = getCompareSummaryFromHexes();
     const baseOnly = compareSummary.baseOnlyPop;
     const compareOnly = compareSummary.compareOnlyPop;
-    const shared = compareSummary.sharedPop;
-    const advantage = baseOnly - compareOnly;
-    const advantageEl = document.getElementById("kpiLondonShare");
-    const advantageText = advantage === 0 ? "0"
-      : (advantage > 0 ? "+" : "−") + fmtInt(Math.round(Math.abs(advantage)));
-    advantageEl.textContent = advantageText;
-    advantageEl.style.color = advantage > 0 ? "#43A047" : advantage < 0 ? "#E53935" : "";
-
     const baseBrandName = selectedArr()[0] || 'Base';
     const compareBrandName = state.compareBrand || 'Compare';
     const baseStores = state.metrics.brand_totals[baseBrandName] || 0;
@@ -2302,19 +2294,18 @@ function refreshKPIs() {
 
     document.getElementById("kpiTotal").textContent = baseOnly ? fmtInt(Math.round(baseOnly)) : "—";
     document.getElementById("kpiRegions").textContent = compareOnly ? fmtInt(Math.round(compareOnly)) : "—";
-    document.getElementById("kpiDense").textContent = shared ? fmtInt(Math.round(shared)) : "—";
-
     document.querySelector("#kpiTotal + .rp-kpi-label").textContent = `${baseBrandName.split("'")[0]} · ${fmtInt(baseStores)} stores`;
     document.querySelector("#kpiRegions + .rp-kpi-label").textContent = `${compareBrandName.split("'")[0]} · ${fmtInt(compareStores)} stores`;
-    document.querySelector("#kpiDense + .rp-kpi-label").textContent = "Shared coverage";
-    const advantageLabel = advantage > 0
-      ? `${baseBrandName.split("'")[0]} advantage`
-      : advantage < 0
-      ? `${compareBrandName.split("'")[0]} advantage`
-      : "Coverage advantage";
-    document.querySelector("#kpiLondonShare + .rp-kpi-label").textContent = advantageLabel;
+
+    // Hide unused cards in compare mode
+    document.getElementById("kpiDense").closest(".rp-kpi-card").style.display = "none";
+    document.getElementById("kpiLondonShare").closest(".rp-kpi-card").style.display = "none";
     return;
   }
+
+  // Restore all cards in non-compare mode
+  document.getElementById("kpiDense").closest(".rp-kpi-card").style.display = "";
+  document.getElementById("kpiLondonShare").closest(".rp-kpi-card").style.display = "";
 
   const hexSummary = getCoverageSummaryFromHexes(regionFilter || null);
   const coveragePct = population > 0 ? (hexSummary.coveredPop / population) : 0;
