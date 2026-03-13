@@ -813,7 +813,6 @@ function initMap() {
     if (map.getZoom() >= 7.5) {
       clearTimeout(state.hexDebounce);
       state.hexDebounce = setTimeout(() => {
-        buildHexLayer();
         rebuildLocationsLayer();
       }, 80);
     }
