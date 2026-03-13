@@ -2391,29 +2391,49 @@ function estimateCoveredHexCount(regionName = null) {
 function renderRegionTable() {
   const selected = selectedArr();
   const popByRegion = state.metrics.region_population_2023 || {};
+  const compareMode = isCoverageCompareMode();
+  const compareBrand = compareMode ? state.compareBrand : null;
+  const baseBrand = compareMode && selected.length === 1 ? selected[0] : null;
 
   const rows = state.metrics.regions.map(region => {
     const counts = state.metrics.region_brand_counts[region] || {};
     const total = selected.reduce((s, b) => s + (counts[b] || 0), 0);
     const population = getRegionPopulation(region) || popByRegion[region] || 0;
+    const areaKm2 = getRegionArea(region);
 
     const hexSummary = getCoverageSummaryFromHexes(region);
     const coveragePct = population > 0 ? (hexSummary.coveredPop / population) : 0;
     const efficiency = total > 0 ? (hexSummary.coveredPop / total) : null;
 
+    let compareLocs = 0, compareCoveredPop = null, gap = null;
+    if (compareMode && compareBrand) {
+      compareLocs = counts[compareBrand] || 0;
+      const totalForDensity = total + compareLocs || 1;
+      const density = areaKm2 > 0 ? compareLocs / (areaKm2 / 1000) : 0;
+      const cm = computeCoverageMetrics(compareLocs, areaKm2, population, compareLocs > 0 ? 1 : 0, density, { [compareBrand]: compareLocs });
+      compareCoveredPop = cm.coveredPop || 0;
+      gap = (hexSummary.coveredPop || 0) - compareCoveredPop;
+    }
+
     return {
-      region,
-      total,
-      coveredPop: hexSummary.coveredPop,
-      coveragePct,
-      coveredHexes: hexSummary.coveredHexes,
-      efficiency
+      region, total, coveredPop: hexSummary.coveredPop, coveragePct,
+      coveredHexes: hexSummary.coveredHexes, efficiency,
+      compareLocs, compareCoveredPop, gap
     };
   });
 
   const table = document.getElementById("regionTable");
 
-  let html = `
+  let html = compareMode ? `
+    <tr>
+      <th>Region</th>
+      <th class="num">${baseBrand ? baseBrand.split("'")[0] : 'Base'} Locs</th>
+      <th class="num">${compareBrand ? compareBrand.split("'")[0] : 'Compare'} Locs</th>
+      <th class="num">${baseBrand ? baseBrand.split("'")[0] : 'Base'} Pop</th>
+      <th class="num">${compareBrand ? compareBrand.split("'")[0] : 'Compare'} Pop</th>
+      <th class="num">Gap</th>
+    </tr>
+  ` : `
     <tr>
       <th>Region</th>
       <th class="num">Locations</th>
@@ -2426,17 +2446,36 @@ function renderRegionTable() {
 
   rows.forEach(r => {
     const isActive = r.region === state.selectedRegion;
+    const regionLabel = r.region.replace(" (England)", "");
 
-    html += `
-      <tr class="region-row ${isActive ? "active" : ""}" data-region="${r.region}">
-        <td><strong>${r.region.replace(" (England)", "")}</strong></td>
-        <td class="num">${fmtInt(r.total)}</td>
-        <td class="num">${r.coveredPop ? fmtInt(Math.round(r.coveredPop)) : "—"}</td>
-        <td class="num">${r.coveragePct ? fmtPct(r.coveragePct) : "—"}</td>
-        <td class="num">${fmtInt(r.coveredHexes)}</td>
-        <td class="num">${r.efficiency ? fmtInt(Math.round(r.efficiency)) : "—"}</td>
-      </tr>
-    `;
+    if (compareMode) {
+      const gap = r.gap;
+      const gapColor = gap > 0 ? "#43A047" : gap < 0 ? "#E53935" : "var(--muted)";
+      const gapText = gap === 0 || gap == null ? "—"
+        : `${gap > 0 ? "+" : ""}${fmtInt(Math.round(gap))}`;
+      html += `
+        <tr class="region-row ${isActive ? "active" : ""}" data-region="${r.region}">
+          <td><strong>${regionLabel}</strong></td>
+          <td class="num">${fmtInt(r.total)}</td>
+          <td class="num">${fmtInt(r.compareLocs)}</td>
+          <td class="num">${r.coveredPop ? fmtInt(Math.round(r.coveredPop)) : "—"}</td>
+          <td class="num">${r.compareCoveredPop != null ? fmtInt(Math.round(r.compareCoveredPop)) : "—"}</td>
+          <td class="num" style="color:${gapColor}">${gapText}</td>
+        </tr>
+      `;
+    } else {
+      html += `
+        <tr class="region-row ${isActive ? "active" : ""}" data-region="${r.region}">
+          <td><strong>${regionLabel}</strong></td>
+          <td class="num">${fmtInt(r.total)}</td>
+          <td class="num">${r.coveredPop ? fmtInt(Math.round(r.coveredPop)) : "—"}</td>
+          <td class="num">${r.coveragePct ? fmtPct(r.coveragePct) : "—"}</td>
+          <td class="num">${fmtInt(r.coveredHexes)}</td>
+          <td class="num">${r.efficiency ? fmtInt(Math.round(r.efficiency)) : "—"}</td>
+        </tr>
+      `;
+    }
+
 
     if (isActive) {
       const cityRows = buildCityRowsForRegion(r.region);
