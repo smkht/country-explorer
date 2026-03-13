@@ -2186,6 +2186,7 @@ function renderRegionTable() {
 
   rows.forEach(r => {
     const isActive = r.region === state.selectedRegion;
+    if (state.selectedRegion && !isActive) return;
 
     html += `
       <tr class="region-row ${isActive ? "active" : ""}" data-region="${r.region}">
@@ -2201,6 +2202,9 @@ function renderRegionTable() {
     if (isActive) {
       const cityRows = buildCityRowsForRegion(r.region);
       const mapBrands = getActiveMapBrands();
+      const visibleCities = state.selectedCity
+        ? cityRows.filter(c => c.city === state.selectedCity)
+        : cityRows;
 
       if (mapBrands.length === 1) {
         const brand = mapBrands[0];
@@ -2216,7 +2220,7 @@ function renderRegionTable() {
                   <th class="num">Covered Pop / Loc</th>
                   <th class="num">Confidence</th>
                 </tr>
-                ${cityRows.slice(0, 12).map(c => `
+                ${visibleCities.slice(0, 12).map(c => `
                   <tr class="city-row" data-city="${c.city}" data-region="${r.region}">
                     <td>${c.city}</td>
                     <td class="num">${fmtInt(safeBrandValue(c.brandCounts, brand))}</td>
@@ -2246,7 +2250,7 @@ function renderRegionTable() {
                   <th class="num">Gap</th>
                   <th class="num">Opportunity</th>
                 </tr>
-                ${cityRows.slice(0, 12).map(c => {
+                ${visibleCities.slice(0, 12).map(c => {
                   const baseLocs = safeBrandValue(c.brandCounts, baseBrand);
                   const compareLocs = safeBrandValue(c.brandCounts, compareBrand);
 
@@ -2307,7 +2311,7 @@ function renderRegionTable() {
                   <th class="num">Coverage %</th>
                   <th class="num">Active Brands</th>
                 </tr>
-                ${cityRows.slice(0, 12).map(c => `
+                ${visibleCities.slice(0, 12).map(c => `
                   <tr class="city-row" data-city="${c.city}" data-region="${r.region}">
                     <td>${c.city}</td>
                     <td class="num">${fmtInt(c.total)}</td>
