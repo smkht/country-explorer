@@ -782,10 +782,10 @@ function initMap() {
   // Custom panes for z-order: dots always on top of hex fills
   const hexPaneEl = map.createPane('hexPane');
   hexPaneEl.style.zIndex = 400;
-  hexPaneEl.style.mixBlendMode = 'multiply';
+  hexPaneEl.style.mixBlendMode = 'normal';
   const comparePaneEl = map.createPane('comparePane');
   comparePaneEl.style.zIndex = 410;
-  comparePaneEl.style.mixBlendMode = 'multiply';
+  comparePaneEl.style.mixBlendMode = 'normal';
   map.createPane('dotsPane').style.zIndex = 450;
 
   L.tileLayer('https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png', {
@@ -1435,14 +1435,17 @@ function buildCompareHexLayer(baseHexes, compareBrand, bounds, cellSize) {
   // Orange blob circles for visual compare coverage
   const compareProfile = DELIVERY_PROFILE[compareBrand] || { baseKm: 3.2 };
   const compareRadiusM = compareProfile.baseKm * 1000;
-  const compareStores = getPointsInBounds(bounds.pad(0.15), new Set([compareBrand]), null);
+  const compareStoresAll = getPointsInBounds(bounds.pad(0.15), new Set([compareBrand]), null);
+  const compareStores = compareStoresAll.length > 200
+    ? compareStoresAll.filter((_, i) => i % Math.ceil(compareStoresAll.length / 200) === 0)
+    : compareStoresAll;
   const compareCircles = compareStores.map(f => {
     const [lon, lat] = f.geometry.coordinates;
     return L.circle([lat, lon], {
       radius: compareRadiusM,
       pane: 'comparePane',
       fillColor: '#FF6600',
-      fillOpacity: 0.13,
+      fillOpacity: 0.09,
       weight: 0,
       color: 'transparent',
       opacity: 0,
@@ -1608,14 +1611,18 @@ function buildHexLayer() {
       const blobProfile = DELIVERY_PROFILE[baseBrand] || { baseKm: 3.2 };
       const blobColor = '#3B5BFE';
       const blobRadiusM = blobProfile.baseKm * 1000;
-      const blobStores = getPointsInBounds(bounds.pad(0.15), new Set([baseBrand]), null);
+      const blobStoresAll = getPointsInBounds(bounds.pad(0.15), new Set([baseBrand]), null);
+      // Cap circles to avoid over-saturation in dense urban areas; blurred circles merge anyway
+      const blobStores = blobStoresAll.length > 200
+        ? blobStoresAll.filter((_, i) => i % Math.ceil(blobStoresAll.length / 200) === 0)
+        : blobStoresAll;
       const blobCircles = blobStores.map(f => {
         const [lon, lat] = f.geometry.coordinates;
         return L.circle([lat, lon], {
           radius: blobRadiusM,
           pane: 'hexPane',
           fillColor: blobColor,
-          fillOpacity: 0.13,
+          fillOpacity: 0.09,
           weight: 0,
           color: 'transparent',
           opacity: 0,
@@ -2509,7 +2516,7 @@ function renderRegionTable() {
                   <th class="num">Covered Pop / Loc</th>
                   <th class="num">Confidence</th>
                 </tr>
-                ${visibleCities.slice(0, 12).map(c => `
+                ${visibleCities.slice(0, 25).map(c => `
                   <tr class="city-row ${c.city === state.selectedCity ? 'active' : ''}" data-city="${c.city}" data-region="${r.region}">
                     <td>${c.city}</td>
                     <td class="num">${fmtInt(safeBrandValue(c.brandCounts, brand))}</td>
@@ -2539,7 +2546,7 @@ function renderRegionTable() {
                   <th class="num">Gap</th>
                   <th class="num">Opportunity</th>
                 </tr>
-                ${visibleCities.slice(0, 12).map(c => {
+                ${visibleCities.slice(0, 25).map(c => {
                   const baseLocs = safeBrandValue(c.brandCounts, baseBrand);
                   const compareLocs = safeBrandValue(c.brandCounts, compareBrand);
 
@@ -2600,7 +2607,7 @@ function renderRegionTable() {
                   <th class="num">Coverage %</th>
                   <th class="num">Active Brands</th>
                 </tr>
-                ${visibleCities.slice(0, 12).map(c => `
+                ${visibleCities.slice(0, 25).map(c => `
                   <tr class="city-row ${c.city === state.selectedCity ? 'active' : ''}" data-city="${c.city}" data-region="${r.region}">
                     <td>${c.city}</td>
                     <td class="num">${fmtInt(c.total)}</td>
