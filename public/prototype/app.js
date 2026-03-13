@@ -1472,6 +1472,10 @@ function buildHexLayer() {
   }
   if (!state.map || state.country !== "england") return;
   if (!shouldShowCoverageLayer()) {
+    const hp = state.map.getPane('hexPane');
+    if (hp) hp.style.filter = '';
+    const cp = state.map.getPane('comparePane');
+    if (cp) cp.style.filter = '';
     updateLegend();
     return;
   }
@@ -1619,6 +1623,13 @@ function buildHexLayer() {
         });
       });
       state._blobLayer = L.layerGroup(blobCircles).addTo(state.map);
+
+      // Blur nearby circles so they merge into one contiguous coverage area
+      const blurPx = zoom >= 13 ? 16 : zoom >= 11 ? 11 : zoom >= 9 ? 7 : 5;
+      const hexPaneEl = state.map.getPane('hexPane');
+      if (hexPaneEl) hexPaneEl.style.filter = `blur(${blurPx}px)`;
+      const comparePaneEl = state.map.getPane('comparePane');
+      if (comparePaneEl) comparePaneEl.style.filter = `blur(${blurPx}px)`;
 
       if (isCoverageCompareMode() && state.compareBrand !== baseBrand) {
         buildCompareHexLayer(baseFeatures, state.compareBrand, bounds, effectiveCellSize);
@@ -2430,9 +2441,7 @@ function renderRegionTable() {
     if (isActive) {
       const cityRows = buildCityRowsForRegion(r.region);
       const mapBrands = getActiveMapBrands();
-      const visibleCities = state.selectedCity
-        ? cityRows.filter(c => c.city === state.selectedCity)
-        : cityRows;
+      const visibleCities = cityRows; // show all cities; selected city highlighted via CSS
 
       if (mapBrands.length === 1) {
         const brand = mapBrands[0];
@@ -2449,7 +2458,7 @@ function renderRegionTable() {
                   <th class="num">Confidence</th>
                 </tr>
                 ${visibleCities.slice(0, 12).map(c => `
-                  <tr class="city-row" data-city="${c.city}" data-region="${r.region}">
+                  <tr class="city-row ${c.city === state.selectedCity ? 'active' : ''}" data-city="${c.city}" data-region="${r.region}">
                     <td>${c.city}</td>
                     <td class="num">${fmtInt(safeBrandValue(c.brandCounts, brand))}</td>
                     <td class="num">${c.coveredPop ? fmtInt(Math.round(c.coveredPop)) : "—"}</td>
@@ -2510,7 +2519,7 @@ function renderRegionTable() {
                     (1 + Math.max(0, compareLocs - baseLocs) * 0.15);
 
                   return `
-                    <tr class="city-row" data-city="${c.city}" data-region="${r.region}">
+                    <tr class="city-row ${c.city === state.selectedCity ? 'active' : ''}" data-city="${c.city}" data-region="${r.region}">
                       <td>${c.city}</td>
                       <td class="num">${fmtInt(baseLocs)}</td>
                       <td class="num">${fmtInt(compareLocs)}</td>
@@ -2540,7 +2549,7 @@ function renderRegionTable() {
                   <th class="num">Active Brands</th>
                 </tr>
                 ${visibleCities.slice(0, 12).map(c => `
-                  <tr class="city-row" data-city="${c.city}" data-region="${r.region}">
+                  <tr class="city-row ${c.city === state.selectedCity ? 'active' : ''}" data-city="${c.city}" data-region="${r.region}">
                     <td>${c.city}</td>
                     <td class="num">${fmtInt(c.total)}</td>
                     <td class="num">${c.coveredPop ? fmtInt(Math.round(c.coveredPop)) : "—"}</td>
