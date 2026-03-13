@@ -319,9 +319,9 @@ function hexStrokeHeatmap(ratio) {
 }
 
 function cellSizeForZoom(zoom) {
-  if (state.selectedCity) return 2.5;
-  if (state.selectedRegion) return 5;
-  return 12;
+  if (state.selectedCity) return 5;
+  if (state.selectedRegion) return 15;
+  return 50;
 }
 
 // ── Country handling ──
