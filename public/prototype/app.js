@@ -1753,8 +1753,21 @@ function rebuildLocationsLayer() {
   const brandSet = new Set(activeBrands);
   const zoom = state.map.getZoom();
 
-  // Always show all stores in viewport — no region filter so dots stay visible while panning
-  const feats = getPointsInBounds(state.map.getBounds().pad(0.2), brandSet, null);
+  // Build feature set: viewport stores + all stores matching selected city name
+  let feats;
+  if (state.selectedCity) {
+    const cityLower = state.selectedCity.toLowerCase();
+    const byCity = (state.locationsGeojson?.features || []).filter(f =>
+      brandSet.has(f.properties.brand) &&
+      (f.properties.city || '').trim().toLowerCase() === cityLower
+    );
+    const byViewport = getPointsInBounds(state.map.getBounds().pad(0.5), brandSet, null);
+    const merged = new Map();
+    [...byCity, ...byViewport].forEach(f => merged.set(f, f));
+    feats = Array.from(merged.values());
+  } else {
+    feats = getPointsInBounds(state.map.getBounds().pad(0.2), brandSet, null);
+  }
 
   // Always show some locations on national view
   if (feats.length === 0) return;
@@ -1786,8 +1799,8 @@ function rebuildLocationsLayer() {
         const isCompare = compareBrand && brand === compareBrand;
 
         const isHighlighted = isCompareMode && (isBase || isCompare);
-        // In compare mode: compare brand dots are orange, base brand stays brand color
-        const dotColor = (isCompareMode && isCompare) ? '#FF6600' : (BRAND_COLORS[brand] || "#3B5BFE");
+        // Dots always use brand color — zones (blobs) are what's blue/orange
+        const dotColor = BRAND_COLORS[brand] || "#3B5BFE";
         return L.circleMarker(latlng, {
           radius: isHighlighted ? dotRadius + 2 : dotRadius,
           weight: isHighlighted ? 2.5 : dotWeight,
