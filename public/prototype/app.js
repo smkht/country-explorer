@@ -442,6 +442,12 @@ function setAllBrands(brands) {
   state.selectedBrands = new Set(brands);
   updateBrandPillSelection();
   state.selectedCity = null;
+  // Disable compare mode — it requires single brand selection
+  state.compareEnabled = false;
+  state.compareBrand = null;
+  const toggle = document.getElementById("compareToggle");
+  if (toggle) toggle.checked = false;
+  if (state.compareHexLayer) { state.compareHexLayer.remove(); state.compareHexLayer = null; }
   updateComparePillsState();
   refreshAll();
 }
@@ -792,6 +798,11 @@ function initMap() {
   state.map = map;
   map.setView([ENGLAND_VIEW.lat, ENGLAND_VIEW.lon], ENGLAND_VIEW.zoom);
 
+  // Custom panes for z-order: dots always on top of hex fills
+  map.createPane('hexPane').style.zIndex = 400;
+  map.createPane('comparePane').style.zIndex = 410;
+  map.createPane('dotsPane').style.zIndex = 450;
+
   L.tileLayer('https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png', {
     maxZoom: 18, attribution: '© OpenStreetMap © CARTO'
   }).addTo(map);
@@ -855,6 +866,16 @@ function flyToCity(cityName, region) {
   const cities = REGION_CITIES[region] || [];
   const city = cities.find(c => c.name === cityName);
   if (city) state.map.flyTo([city.lat, city.lon], 13, { duration: 1 });
+}
+
+function scheduleRefreshAfterMove() {
+  state.map.once('moveend', () => {
+    buildHexLayer();
+    rebuildLocationsLayer();
+    refreshKPIs();
+    renderRegionTable();
+    renderGreatBritainSummary();
+  });
 }
 
 // ── Fast region lookup cache ──
@@ -1068,8 +1089,8 @@ function fillForBrandCoverage(feature) {
   const p = feature.properties || {};
   const t = Math.max(0, Math.min(1, p.coveragePct || 0));
   const overlapBoost = Math.max(0, Math.min(1, (p.overlapIndex || 0) / 2));
-  const alpha = 0.10 + t * 0.45 + overlapBoost * 0.18;
-  const light = 78 - t * 26 - overlapBoost * 8;
+  const alpha = 0.06 + t * 0.32 + overlapBoost * 0.10;
+  const light = 82 - t * 18 - overlapBoost * 5;
   const rgb = parseHexColor(brandColor(p.brand));
   const mixed = lightenRgb(rgb, 100 - light);
   return `rgba(${mixed.r},${mixed.g},${mixed.b},${alpha})`;
@@ -1230,26 +1251,48 @@ function applyCoverageHoleFill(features) {
   }
   if (!isFinite(minDist)) minDist = 0.12;
   const neighborRadius = minDist * 1.45;
-  for (let i = 0; i < features.length; i++) {
-    const p = features[i].properties || {};
-    if ((p.coveragePct || 0) >= (p.threshold ?? 0.30)) continue;
-    let neighbors = 0;
-    let covered = 0;
-    for (let j = 0; j < features.length; j++) {
-      if (i === j) continue;
-      const q = features[j].properties || {};
-      const d = Math.hypot((p._cx || 0) - (q._cx || 0), (p._cy || 0) - (q._cy || 0));
-      if (d <= neighborRadius) {
-        neighbors++;
-        if ((q.coveragePct || 0) >= (q.threshold ?? 0.30)) covered++;
+
+  // Two passes: first strong fill, then softer interpolation for remaining gaps
+  for (let pass = 0; pass < 2; pass++) {
+    for (let i = 0; i < features.length; i++) {
+      const p = features[i].properties || {};
+      if ((p.coveragePct || 0) >= (p.threshold ?? 0.30)) continue;
+      let neighbors = 0;
+      let covered = 0;
+      let avgCoverage = 0;
+      for (let j = 0; j < features.length; j++) {
+        if (i === j) continue;
+        const q = features[j].properties || {};
+        const d = Math.hypot((p._cx || 0) - (q._cx || 0), (p._cy || 0) - (q._cy || 0));
+        if (d <= neighborRadius) {
+          neighbors++;
+          if ((q.coveragePct || 0) >= (q.threshold ?? 0.30)) {
+            covered++;
+            avgCoverage += q.coveragePct || 0;
+          }
+        }
       }
-    }
-    if ((neighbors >= 4 && covered >= 4) || (neighbors >= 6 && covered / Math.max(1, neighbors) >= 0.66)) {
-      p.coveragePct = Math.max(p.coveragePct || 0, covered >= 5 ? 0.60 : 0.50);
-      p.coveredPop = Math.max(p.coveredPop || 0, (p.estPop || 0) * p.coveragePct);
-      p.coveredAreaKm2 = Math.max(p.coveredAreaKm2 || 0, (p.areaKm2 || 0) * p.coveragePct);
-      p.isCovered = p.coveragePct >= (p.threshold ?? 0.30);
-      p.holeFilled = true;
+      avgCoverage = covered > 0 ? avgCoverage / covered : 0;
+
+      // Strong fill: surrounded by covered hexes
+      if ((neighbors >= 3 && covered >= 3) || (neighbors >= 5 && covered / Math.max(1, neighbors) >= 0.55)) {
+        p.coveragePct = Math.max(p.coveragePct || 0, covered >= 5 ? 0.70 : 0.60);
+        p.coveredPop = Math.max(p.coveredPop || 0, (p.estPop || 0) * p.coveragePct);
+        p.coveredAreaKm2 = Math.max(p.coveredAreaKm2 || 0, (p.areaKm2 || 0) * p.coveragePct);
+        p.isCovered = p.coveragePct >= (p.threshold ?? 0.30);
+        p.holeFilled = true;
+      }
+      // Soft interpolation: edge smoothing for hexes near coverage
+      else if (pass === 1 && neighbors >= 3 && covered >= 2) {
+        const fillVal = avgCoverage * 0.5;
+        if (fillVal > (p.coveragePct || 0)) {
+          p.coveragePct = fillVal;
+          p.coveredPop = Math.max(p.coveredPop || 0, (p.estPop || 0) * p.coveragePct);
+          p.coveredAreaKm2 = Math.max(p.coveredAreaKm2 || 0, (p.areaKm2 || 0) * p.coveragePct);
+          p.isCovered = p.coveragePct >= (p.threshold ?? 0.30);
+          p.holeFilled = true;
+        }
+      }
     }
   }
 }
@@ -1268,7 +1311,7 @@ function buildBrandCoverageFeatures(brand, bounds, cellSize) {
   const hexAreaKm2 = hexGrid.features.length > 0 ? turf.area(hexGrid.features[0]) / 1e6 : 1;
 
   const brandFilter = new Set([brand]);
-  const maxSearchRadiusKm = 6;
+  const maxSearchRadiusKm = 8;
 
   hexGrid.features.forEach(hex => {
     const [cx, cy] = getHexCentroid(hex);
@@ -1332,7 +1375,9 @@ function buildCompareHexLayer(baseHexes, compareBrand, bounds, cellSize) {
 
   if (!isCoverageCompareMode() || !compareBrand || !state.baseBrand) return;
 
-  const { features: compareFeatures } = buildBrandCoverageFeatures(compareBrand, bounds, cellSize);
+  // Use larger bounds for compare brand to catch stores near viewport edges
+  const compareBounds = bounds.pad ? bounds.pad(0.3) : bounds;
+  const { features: compareFeatures } = buildBrandCoverageFeatures(compareBrand, compareBounds, cellSize);
 
   const compareIndex = new Map();
   compareFeatures.forEach(f => {
@@ -1366,6 +1411,7 @@ function buildCompareHexLayer(baseHexes, compareBrand, bounds, cellSize) {
   state.compareHexLayer = L.geoJSON(
     { type: "FeatureCollection", features: overlayFeatures },
     {
+      pane: 'comparePane',
       style: f => {
         const s = f.properties.coverState;
         if (s === "shared") {
@@ -1500,6 +1546,7 @@ function buildHexLayer() {
     state.hexLayer = L.geoJSON(
       { type: "FeatureCollection", features: hexGrid.features },
       {
+        pane: 'hexPane',
         style: f => {
           const p = f.properties;
           const maxPop = state._hexMaxPop || 1;
@@ -1554,6 +1601,7 @@ function buildHexLayer() {
       state.hexLayer = L.geoJSON(
         { type: "FeatureCollection", features: baseFeatures },
         {
+          pane: 'hexPane',
           style: f => {
             const displayThreshold = getCoverageDisplayThreshold();
             const isDisplay = (f.properties.coveragePct || 0) >= displayThreshold;
@@ -1604,7 +1652,7 @@ function buildHexLayer() {
     } else {
       const hexGrid = turf.hexGrid(bbox, cellSize, { units: "kilometers" });
       const hexAreaKm2 = hexGrid.features.length > 0 ? turf.area(hexGrid.features[0]) / 1e6 : 1;
-      const maxSearchRadiusKm = 6;
+      const maxSearchRadiusKm = 8;
 
       hexGrid.features.forEach(hex => {
         const [cx, cy] = getHexCentroid(hex);
@@ -1639,6 +1687,7 @@ function buildHexLayer() {
       state.hexLayer = L.geoJSON(
         { type: "FeatureCollection", features: hexGrid.features },
         {
+          pane: 'hexPane',
           style: f => {
             const displayThreshold = getCoverageDisplayThreshold();
             const isDisplay = (f.properties.coveragePct || 0) >= displayThreshold;
@@ -1766,7 +1815,7 @@ function rebuildLocationsLayer() {
 
   // Use Canvas renderer for much better performance with thousands of markers
   if (!state._canvasRenderer) {
-    state._canvasRenderer = L.canvas({ padding: 0.5 });
+    state._canvasRenderer = L.canvas({ padding: 0.5, pane: 'dotsPane' });
   }
 
   const selected = selectedArr();
@@ -1849,13 +1898,8 @@ function refreshBrandCounts() {
   });
 }
 
-function refreshAll() {
-  if (state.country !== "england") return;
-  const selected = selectedArr();
-  if (!state.heatmapMode && selected.length === 1 && state.coverageView === "overlap") {
-    // overlap is less useful for one-chain view; fall back to coverage
-    state.coverageView = "coverage";
-    const regionSelect = document.getElementById("regionSelect");
+function setupDropdownListeners() {
+  const regionSelect = document.getElementById("regionSelect");
   if (regionSelect) {
     regionSelect.addEventListener("change", e => {
       state.selectedRegion = e.target.value || null;
@@ -1901,8 +1945,14 @@ function refreshAll() {
       scheduleRefreshAfterMove();
     });
   }
+}
 
-  const coverageViewSelect = document.getElementById("coverageViewSelect");
+function refreshAll() {
+  if (state.country !== "england") return;
+  const selected = selectedArr();
+  if (!state.heatmapMode && selected.length === 1 && state.coverageView === "overlap") {
+    state.coverageView = "coverage";
+    const coverageViewSelect = document.getElementById("coverageViewSelect");
     if (coverageViewSelect) coverageViewSelect.value = "coverage";
   }
   buildHexLayer();
@@ -2184,7 +2234,7 @@ function updateCoverageSummaryCache() {
       const hexGrid = turf.hexGrid(bbox, cellSize, { units: "kilometers" });
       const hexAreaKm2 = hexGrid.features.length > 0 ? turf.area(hexGrid.features[0]) / 1e6 : 1;
       const brandFilter = new Set(activeBrands);
-      const maxSearchRadiusKm = 6;
+      const maxSearchRadiusKm = 8;
 
       hexGrid.features.forEach(hex => {
         const [cx, cy] = getHexCentroid(hex);
@@ -2210,7 +2260,7 @@ function updateCoverageSummaryCache() {
     const hexGrid = turf.hexGrid(bbox, cellSize, { units: "kilometers" });
     const hexAreaKm2 = hexGrid.features.length > 0 ? turf.area(hexGrid.features[0]) / 1e6 : 1;
     const brandFilter = new Set(activeBrands);
-    const maxSearchRadiusKm = 6;
+    const maxSearchRadiusKm = 8;
 
     hexGrid.features.forEach(hex => {
       const [cx, cy] = getHexCentroid(hex);
@@ -3368,8 +3418,7 @@ function wireUI() {
         state.compareBrand = available[0] || null;
         updateComparePillsState();
       }
-      buildHexLayer();
-      rebuildLocationsLayer();
+      refreshAll();
       updateLegend();
     });
   }
@@ -3428,6 +3477,7 @@ async function main() {
     initMap();
     setCountry("england");
     wireUI();
+    setupDropdownListeners();
     const heatmapToggle = document.getElementById("heatmapToggle");
     if (heatmapToggle) {
       heatmapToggle.checked = false;
