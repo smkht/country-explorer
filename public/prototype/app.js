@@ -2961,31 +2961,21 @@ function wireUI() {
 async function main() {
   try {
     const t0 = performance.now();
-    const files = await Promise.allSettled([
+    const [metrics, regions, locations, lsoaMetrics, lsoaGeo] = await Promise.all([
       loadJSON("metrics_england.json"),
       loadJSON("england_regions_simplified.geojson"),
       loadJSON("england_locations_min.geojson"),
-      loadJSON("data/processed/lsoa_enriched.geojson"),
-      loadJSON("data/processed/lsoa_metrics.json"),
-      loadJSON("data/processed/lsoa_population_centroids.json")
+      loadJSON("data/processed/lsoa_metrics.json").catch(() => null),
+      loadJSON("data/processed/lsoa_enriched.geojson").catch(() => null)
     ]);
 
-    const [metricsR, regionsR, locationsR, lsoaGeoR, lsoaMetricsR, lsoaCentroidsR] = files;
-
-    if (metricsR.status !== "fulfilled" || regionsR.status !== "fulfilled" || locationsR.status !== "fulfilled") {
-      throw new Error("Core England files failed to load.");
-    }
-
-    state.metrics = metricsR.value;
-    state.regionsGeojson = regionsR.value;
-    state.locationsGeojson = locationsR.value;
-
-    if (lsoaGeoR.status === "fulfilled") state.lsoaGeojson = lsoaGeoR.value;
-    if (lsoaMetricsR.status === "fulfilled") state.lsoaMetrics = lsoaMetricsR.value;
-    if (lsoaCentroidsR.status === "fulfilled") state.lsoaCentroids = lsoaCentroidsR.value;
+    state.metrics = metrics;
+    state.regionsGeojson = regions;
+    state.locationsGeojson = locations;
+    state.lsoaMetrics = lsoaMetrics;
+    state.lsoaGeojson = lsoaGeo;
 
     console.log(`⚡ Data loaded in ${(performance.now() - t0).toFixed(0)}ms`);
-    console.log(`📍 LSOA mode: ${isLSOAReady() ? "enabled" : "fallback to hex"}`);
 
     // Normalize city names to title case (e.g. "LONDON" → "London", "st. albans" → "St. Albans")
     state.locationsGeojson.features.forEach(f => {
@@ -3001,7 +2991,7 @@ async function main() {
     });
 
     buildSpatialIndex();
-    buildRegionGrid(); // Pre-compute region lookup grid
+    buildRegionGrid();
     if (isLSOAReady()) buildLSOASpatialIndex();
     computeUnlocatedStores();
     buildBrandList();
