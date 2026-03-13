@@ -2336,15 +2336,15 @@ function refreshRegionList() {
 }
 
 function refreshRegionalAnalytics() {
-  const selected = selectedArr();
+  const activeBrands = getActiveMapBrands();
   const rows = state.metrics.regions.map(region => {
     const counts = state.metrics.region_brand_counts[region] || {};
     let total = 0;
-    selected.forEach(b => { total += (counts[b] || 0); });
+    activeBrands.forEach(b => { total += (counts[b] || 0); });
     const area = state.metrics.region_area_km2[region] || 1;
     const density = total / (area / 1000);
     let topBrand = null, topCount = -1;
-    selected.forEach(b => {
+    activeBrands.forEach(b => {
       const v = counts[b] || 0;
       if (v > topCount) { topCount = v; topBrand = b; }
     });
@@ -2416,8 +2416,8 @@ function refreshRegionalAnalytics() {
   if (drillClear) drillClear.classList.remove("hidden");
 
   const counts = state.metrics.region_brand_counts[region] || {};
-  const total = selected.reduce((s, b) => s + (counts[b] || 0), 0);
-  const brandRows = selected.map(b => ({ brand: b, count: counts[b] || 0 }))
+  const total = activeBrands.reduce((s, b) => s + (counts[b] || 0), 0);
+  const brandRows = activeBrands.map(b => ({ brand: b, count: counts[b] || 0 }))
     .sort((a, b) => b.count - a.count);
   document.getElementById("regionDrilldownBrandTable").innerHTML = `
     <tr><th>Brand</th><th class="num">Count</th><th class="num">Share</th></tr>
@@ -2434,14 +2434,14 @@ function refreshRegionalAnalytics() {
   const cityBrand = {};
   state.locationsGeojson.features.forEach(f => {
     const p = f.properties;
-    if (p.region !== region || !selected.includes(p.brand)) return;
+    if (p.region !== region || !activeBrands.includes(p.brand)) return;
     const city = (p.city || "Unknown").trim();
     if (!cityBrand[city]) cityBrand[city] = { total: 0 };
     cityBrand[city][p.brand] = (cityBrand[city][p.brand] || 0) + 1;
     cityBrand[city].total++;
   });
   const topCities = Object.entries(cityBrand).sort((a, b) => b[1].total - a[1].total).slice(0, 10);
-  const brandCols = selected.slice(0, 4);
+  const brandCols = activeBrands.slice(0, 4);
   const cityNullCount = (state.cityNullStores && state.cityNullStores[region] ? state.cityNullStores[region]._total : 0);
   const colSpan = 2 + brandCols.length;
   const cityNotice = cityNullCount > 0
