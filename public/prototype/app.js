@@ -455,21 +455,23 @@ function setAllBrands(brands) {
 function buildBrandSelects() {
   const primary = document.getElementById("primaryBrandSelect");
   const secondary = document.getElementById("secondaryBrandSelect");
-  primary.innerHTML = "";
-  secondary.innerHTML = "";
-  state.metrics.brands.forEach(b => {
-    const o1 = document.createElement("option");
-    o1.value = b; o1.textContent = b;
-    primary.appendChild(o1);
-    const o2 = document.createElement("option");
-    o2.value = b; o2.textContent = b;
-    secondary.appendChild(o2);
-  });
   state.primaryBrand = state.metrics.brands[0];
   state.secondaryBrand = state.metrics.brands[1];
   state.compareBrand = state.metrics.brands.find(b => b !== state.primaryBrand) || state.metrics.brands[1];
-  primary.value = state.primaryBrand;
-  secondary.value = state.compareBrand || state.secondaryBrand;
+  if (primary && secondary) {
+    primary.innerHTML = "";
+    secondary.innerHTML = "";
+    state.metrics.brands.forEach(b => {
+      const o1 = document.createElement("option");
+      o1.value = b; o1.textContent = b;
+      primary.appendChild(o1);
+      const o2 = document.createElement("option");
+      o2.value = b; o2.textContent = b;
+      secondary.appendChild(o2);
+    });
+    primary.value = state.primaryBrand;
+    secondary.value = state.compareBrand || state.secondaryBrand;
+  }
   buildComparePills();
 }
 
