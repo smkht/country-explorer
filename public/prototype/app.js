@@ -319,9 +319,28 @@ function hexStrokeHeatmap(ratio) {
 }
 
 function cellSizeForZoom(zoom) {
-  if (state.selectedCity) return 5;
-  if (state.selectedRegion) return 15;
-  return 50;
+  const focused = !!state.selectedRegion;
+
+  if (focused) {
+    if (zoom >= 14) return 0.35;
+    if (zoom >= 13) return 0.55;
+    if (zoom >= 12) return 0.8;
+    if (zoom >= 11) return 1.1;
+    if (zoom >= 10) return 1.6;
+    if (zoom >= 9) return 2.6;
+    if (zoom >= 8) return 4;
+    return 6;
+  }
+
+  if (zoom >= 14) return 0.6;
+  if (zoom >= 13) return 0.9;
+  if (zoom >= 12) return 1.2;
+  if (zoom >= 11) return 1.8;
+  if (zoom >= 10) return 2.5;
+  if (zoom >= 9) return 4;
+  if (zoom >= 8) return 6;
+  if (zoom >= 7) return 12;
+  return 18;
 }
 
 // ── Country handling ──
