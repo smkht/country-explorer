@@ -333,6 +333,18 @@ function cellSizeForZoom(zoom) {
   return 7.5;
 }
 
+function getMaxConfiguredRadiusKm() {
+  return Object.values(DELIVERY_PROFILE || {}).reduce((m, p) => {
+    const vals = [p?.baseKm, p?.urbanKm, p?.suburbanKm, p?.ruralKm].filter(v => Number.isFinite(v));
+    return Math.max(m, ...(vals.length ? vals : [4.2]));
+  }, 4.2);
+}
+
+function getCoverageSearchRadiusKm(cellSizeKm) {
+  const maxRadius = getMaxConfiguredRadiusKm();
+  return Math.max(6, maxRadius + Math.max(1.2, cellSizeKm * 1.6));
+}
+
 // ── Country handling ──
 function setCountry(country) {
   state.country = country;
@@ -373,6 +385,7 @@ function setTab(tab) {
 // ── Build brand list ──
 function buildBrandList() {
   const wrap = document.getElementById("brandList");
+  if (!wrap) return;
   wrap.innerHTML = "";
   state.selectedBrands = new Set(state.metrics.brands);
 
@@ -1106,7 +1119,7 @@ function getNearbyStoresForHex(cx, cy, searchRadiusKm, brandFilter, regionFilter
 function computeLSOACoverageForBrand(brand, bounds, regionFilter = null) {
   const lsoas = getLSOAsInBounds(bounds, regionFilter);
   const brandFilter = new Set([brand]);
-  const maxSearchRadiusKm = 7;
+  const maxSearchRadiusKm = getCoverageSearchRadiusKm(1.5);
 
   return lsoas.map(f => {
     const cx = f.properties._cx;
@@ -1167,6 +1180,8 @@ function computeCoverageFromNearbyStores(cx, cy, estPop, areaKm2, nearbyStores) 
   let weightedStoreCount = 0;
   const brandCounts = {};
 
+  const cellInfluenceKm = Math.max(0.35, Math.sqrt(areaKm2 / Math.PI) * 0.9);
+
   nearbyStores.forEach(store => {
     const brand = store.properties.brand;
     const radiusKm = getRadiusForBrand(brand, popDensity);
@@ -1174,9 +1189,10 @@ function computeCoverageFromNearbyStores(cx, cy, estPop, areaKm2, nearbyStores) 
     const brandWeight = profile.weight || 1.0;
 
     const d = turf.distance(center, turf.point(store.geometry.coordinates), { units: "kilometers" });
-    if (d > radiusKm) return;
+    const effectiveDistance = Math.max(0, d - cellInfluenceKm);
+    if (effectiveDistance > radiusKm) return;
 
-    const distanceWeight = Math.pow(Math.max(0, 1 - d / radiusKm), 1.2);
+    const distanceWeight = Math.pow(Math.max(0, 1 - effectiveDistance / radiusKm), 1.2);
     const urbanCompression = popDensity >= 3000 ? 0.86 : popDensity >= 800 ? 0.95 : 1.03;
     const contribution = distanceWeight * brandWeight * urbanCompression;
 
@@ -1597,6 +1613,7 @@ function buildHexLayer() {
   }
 
   if (state.locationsLayer) state.locationsLayer.bringToFront();
+  if (state.regionsLayer) state.regionsLayer.bringToFront();
   updateLegend();
 }
 
@@ -1719,7 +1736,7 @@ function refreshBrandCounts() {
     const name = el.dataset.brand;
     if (!name) return;
     const countEl = el.querySelector(".brand-count");
-    countEl.textContent = fmtInt(state.metrics.brand_totals[name] || 0);
+    if (countEl) countEl.textContent = fmtInt(state.metrics.brand_totals[name] || 0);
   });
 }
 
@@ -2037,7 +2054,7 @@ function updateCoverageSummaryCache() {
       const hexGrid = turf.hexGrid(bbox, cellSize, { units: "kilometers" });
       const hexAreaKm2 = hexGrid.features.length > 0 ? turf.area(hexGrid.features[0]) / 1e6 : 1;
       const brandFilter = new Set(activeBrands);
-      const maxSearchRadiusKm = 6;
+      const maxSearchRadiusKm = getCoverageSearchRadiusKm(cellSize);
 
       hexGrid.features.forEach(hex => {
         const [cx, cy] = getHexCentroid(hex);
@@ -2063,7 +2080,7 @@ function updateCoverageSummaryCache() {
     const hexGrid = turf.hexGrid(bbox, cellSize, { units: "kilometers" });
     const hexAreaKm2 = hexGrid.features.length > 0 ? turf.area(hexGrid.features[0]) / 1e6 : 1;
     const brandFilter = new Set(activeBrands);
-    const maxSearchRadiusKm = 6;
+    const maxSearchRadiusKm = getCoverageSearchRadiusKm(cellSize);
 
     hexGrid.features.forEach(hex => {
       const [cx, cy] = getHexCentroid(hex);
@@ -2109,15 +2126,23 @@ function refreshKPIs() {
     const advantage = baseOnly - compareOnly;
     const advantageLabel = advantage >= 0 ? `${selected[0]} advantage` : `${state.compareBrand} advantage`;
 
-    document.getElementById("kpiTotal").textContent = baseOnly ? fmtInt(Math.round(baseOnly)) : "—";
-    document.getElementById("kpiRegions").textContent = compareOnly ? fmtInt(Math.round(compareOnly)) : "—";
-    document.getElementById("kpiDense").textContent = shared ? fmtInt(Math.round(shared)) : "—";
-    document.getElementById("kpiLondonShare").textContent = fmtInt(Math.round(Math.abs(advantage)));
+    const kpiTotal = document.getElementById("kpiTotal");
+    const kpiRegions = document.getElementById("kpiRegions");
+    const kpiDense = document.getElementById("kpiDense");
+    const kpiLondonShare = document.getElementById("kpiLondonShare");
+    if (kpiTotal) kpiTotal.textContent = baseOnly ? fmtInt(Math.round(baseOnly)) : "—";
+    if (kpiRegions) kpiRegions.textContent = compareOnly ? fmtInt(Math.round(compareOnly)) : "—";
+    if (kpiDense) kpiDense.textContent = shared ? fmtInt(Math.round(shared)) : "—";
+    if (kpiLondonShare) kpiLondonShare.textContent = fmtInt(Math.round(Math.abs(advantage)));
 
-    document.querySelector("#kpiTotal + .rp-kpi-label").textContent = "Base-only pop";
-    document.querySelector("#kpiRegions + .rp-kpi-label").textContent = "Compare-only pop";
-    document.querySelector("#kpiDense + .rp-kpi-label").textContent = "Shared pop";
-    document.querySelector("#kpiLondonShare + .rp-kpi-label").textContent = advantageLabel;
+    const kpiTotalLabel = document.querySelector("#kpiTotal + .rp-kpi-label");
+    const kpiRegionsLabel = document.querySelector("#kpiRegions + .rp-kpi-label");
+    const kpiDenseLabel = document.querySelector("#kpiDense + .rp-kpi-label");
+    const kpiLondonLabel = document.querySelector("#kpiLondonShare + .rp-kpi-label");
+    if (kpiTotalLabel) kpiTotalLabel.textContent = "Base-only pop";
+    if (kpiRegionsLabel) kpiRegionsLabel.textContent = "Compare-only pop";
+    if (kpiDenseLabel) kpiDenseLabel.textContent = "Shared pop";
+    if (kpiLondonLabel) kpiLondonLabel.textContent = advantageLabel;
     return;
   }
 
@@ -2125,18 +2150,26 @@ function refreshKPIs() {
   const coveragePct = population > 0 ? (hexSummary.coveredPop / population) : 0;
   const efficiency = totalLocations > 0 ? (hexSummary.coveredPop / totalLocations) : null;
 
-  document.getElementById("kpiTotal").textContent = fmtInt(totalLocations);
-  document.getElementById("kpiRegions").textContent =
+  const kpiTotal = document.getElementById("kpiTotal");
+  const kpiRegions = document.getElementById("kpiRegions");
+  const kpiDense = document.getElementById("kpiDense");
+  const kpiLondonShare = document.getElementById("kpiLondonShare");
+  if (kpiTotal) kpiTotal.textContent = fmtInt(totalLocations);
+  if (kpiRegions) kpiRegions.textContent =
     hexSummary.coveredPop ? fmtInt(Math.round(hexSummary.coveredPop)) : "—";
-  document.getElementById("kpiDense").textContent =
+  if (kpiDense) kpiDense.textContent =
     coveragePct ? fmtPct(coveragePct) : "—";
-  document.getElementById("kpiLondonShare").textContent =
+  if (kpiLondonShare) kpiLondonShare.textContent =
     efficiency ? fmtInt(Math.round(efficiency)) : "—";
 
-  document.querySelector("#kpiTotal + .rp-kpi-label").textContent = "Locations";
-  document.querySelector("#kpiRegions + .rp-kpi-label").textContent = "Covered Population";
-  document.querySelector("#kpiDense + .rp-kpi-label").textContent = "Coverage %";
-  document.querySelector("#kpiLondonShare + .rp-kpi-label").textContent = "Covered Pop / Location";
+  const kpiTotalLabel = document.querySelector("#kpiTotal + .rp-kpi-label");
+  const kpiRegionsLabel = document.querySelector("#kpiRegions + .rp-kpi-label");
+  const kpiDenseLabel = document.querySelector("#kpiDense + .rp-kpi-label");
+  const kpiLondonLabel = document.querySelector("#kpiLondonShare + .rp-kpi-label");
+  if (kpiTotalLabel) kpiTotalLabel.textContent = "Locations";
+  if (kpiRegionsLabel) kpiRegionsLabel.textContent = "Covered Population";
+  if (kpiDenseLabel) kpiDenseLabel.textContent = "Coverage %";
+  if (kpiLondonLabel) kpiLondonLabel.textContent = "Covered Pop / Location";
 }
 
 function computeCoverageMetrics(total, areaKm2, population, diversity, densityPer1000, brandCounts = {}) {
@@ -2729,24 +2762,25 @@ function refreshRegionalAnalytics() {
   });
 }
 
-// Enhanced city fly — falls back to calculating centroid from data
+// Enhanced city fly — prefer city bounds from actual data to avoid duplicate-name misalignment
 function flyToCityOrData(cityName, region) {
-  if (!state.map) return;
-  const cities = REGION_CITIES[region] || [];
-  const city = cities.find(c => c.name.toLowerCase() === cityName.toLowerCase());
-  if (city) {
-    state.map.flyTo([city.lat, city.lon], 13, { duration: 1 });
-    return;
-  }
+  if (!state.map || !cityName) return;
+  const cityNorm = cityName.trim().toLowerCase();
   const pts = state.locationsGeojson.features.filter(f => {
-    const sameCity = (f.properties.city || "").trim().toLowerCase() === cityName.toLowerCase();
-    const sameRegion = !region || f.properties.region === region;
+    const p = f.properties || {};
+    const sameCity = (p.city || "").trim().toLowerCase() === cityNorm;
+    const sameRegion = !region || p.region === region;
     return sameCity && sameRegion;
   });
-  if (pts.length > 0) {
-    let latSum = 0, lonSum = 0;
-    pts.forEach(f => { lonSum += f.geometry.coordinates[0]; latSum += f.geometry.coordinates[1]; });
-    state.map.flyTo([latSum / pts.length, lonSum / pts.length], 13, { duration: 1 });
+  const bounds = getBoundsForPointFeatures(pts, 0.25);
+  if (bounds) {
+    state.map.flyToBounds(bounds, { padding: [24, 24], duration: 1 });
+    return;
+  }
+  const cities = REGION_CITIES[region] || [];
+  const city = cities.find(c => (c.name || "").trim().toLowerCase() === cityNorm);
+  if (city) {
+    state.map.flyTo([city.lat, city.lon], 13, { duration: 1 });
   }
 }
 
