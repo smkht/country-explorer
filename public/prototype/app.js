@@ -339,8 +339,8 @@ function cellSizeForZoom(zoom) {
   if (zoom >= 10) return 2.5;
   if (zoom >= 9) return 4;
   if (zoom >= 8) return 6;
-  if (zoom >= 7) return 9;
-  return 15;
+  if (zoom >= 7) return 12;
+  return 18;
 }
 
 // ── Country handling ──
@@ -1141,7 +1141,7 @@ function computeCoverageFromNearbyStores(cx, cy, estPop, areaKm2, nearbyStores) 
 }
 
 function buildBrandCoverageFeatures(brand, bounds, cellSize) {
-  if (isLSOAReady()) {
+  if (isLSOAReady() && (state.selectedRegion || (state.map && state.map.getZoom() >= 9))) {
     const features = computeLSOACoverageForBrand(brand, bounds, state.selectedRegion || null);
     return {
       features,
