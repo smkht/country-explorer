@@ -807,8 +807,9 @@ function initMap() {
         const regionSelect = document.getElementById("regionSelect");
         if (regionSelect) regionSelect.value = state.selectedRegion || "";
         buildCitySelect(state.selectedRegion);
-        flyToRegion(state.selectedRegion);
-        scheduleRefreshAfterMove();
+        // No fly — keep full England view
+        refreshAll();
+        updateLegend();
       });
       layer.bindTooltip(name.replace(" (England)", ""), { sticky: true });
     }
@@ -1299,7 +1300,8 @@ function buildBrandCoverageFeatures(brand, bounds, cellSize) {
   const hexAreaKm2 = hexGrid.features.length > 0 ? turf.area(hexGrid.features[0]) / 1e6 : 1;
 
   const brandFilter = new Set([brand]);
-  const maxSearchRadiusKm = 8;
+  // Scale search radius with cell size so large national-view hexes still find nearby stores
+  const maxSearchRadiusKm = Math.max(8, cellSize * 1.2);
 
   hexGrid.features.forEach(hex => {
     const [cx, cy] = getHexCentroid(hex);
@@ -1601,7 +1603,11 @@ function buildHexLayer() {
     if (baseBrand) {
       const { features: baseFeatures, featureMode } = buildBrandCoverageFeatures(baseBrand, bounds, effectiveCellSize);
 
-      baseFeatures.forEach(f => {
+      const displayThreshold = getCoverageDisplayThreshold();
+      // Only render hexes with meaningful coverage — removes the ghost grid
+      const coveredBaseFeatures = baseFeatures.filter(f => (f.properties.coveragePct || 0) >= displayThreshold);
+
+      coveredBaseFeatures.forEach(f => {
         f.properties.displayValue = (f.properties.coveragePct || 0) * 100;
 
         if (f.properties.displayValue > maxValue) maxValue = f.properties.displayValue;
@@ -1609,21 +1615,15 @@ function buildHexLayer() {
       });
 
       state.hexLayer = L.geoJSON(
-        { type: "FeatureCollection", features: baseFeatures },
+        { type: "FeatureCollection", features: coveredBaseFeatures },
         {
           pane: 'hexPane',
           style: f => {
-            const displayThreshold = getCoverageDisplayThreshold();
-            const isDisplay = (f.properties.coveragePct || 0) >= displayThreshold;
-            const fill = isDisplay ? fillForBrandCoverage(f) : COMPARE_LAYER_STYLE.noCoverageFill;
-
-            const borderlessCovered = featureMode === "lsoa" || isDisplay;
-
             return {
-              fillColor: fill,
+              fillColor: fillForBrandCoverage(f),
               fillOpacity: 1,
-              weight: borderlessCovered ? 0 : 0.6,
-              color: borderlessCovered ? "transparent" : COMPARE_LAYER_STYLE.noCoverageStroke,
+              weight: 0,
+              color: "transparent",
               opacity: 1
             };
           },
@@ -1686,30 +1686,24 @@ function buildHexLayer() {
       });
       applyCoverageHoleFill(hexGrid.features);
 
+      const coveredHexFeatures = hexGrid.features.filter(
+        f => (f.properties.coveragePct || 0) >= getCoverageDisplayThreshold()
+      );
+
       state.hexLayer = L.geoJSON(
-        { type: "FeatureCollection", features: hexGrid.features },
+        { type: "FeatureCollection", features: coveredHexFeatures },
         {
           pane: 'hexPane',
-          style: f => {
-            const displayThreshold = getCoverageDisplayThreshold();
-            const isDisplay = (f.properties.coveragePct || 0) >= displayThreshold;
-            const borderlessCovered = isDisplay;
-            return {
-              fillColor: isDisplay
-                ? hexFillCoverageMode(
-                    f.properties.displayValue,
-                    maxValue,
-                    "coverage",
-                    f.properties.estPop,
-                    maxPop
-                  )
-                : COMPARE_LAYER_STYLE.noCoverageFill,
-              fillOpacity: 1,
-              weight: borderlessCovered ? 0 : 0.6,
-              color: borderlessCovered ? "transparent" : COMPARE_LAYER_STYLE.noCoverageStroke,
-              opacity: 1
-            };
-          }
+          style: f => ({
+            fillColor: hexFillCoverageMode(
+              f.properties.displayValue, maxValue, "coverage",
+              f.properties.estPop, maxPop
+            ),
+            fillOpacity: 1,
+            weight: 0,
+            color: "transparent",
+            opacity: 1
+          })
         }
       ).addTo(state.map);
 
@@ -1904,8 +1898,9 @@ function setupDropdownListeners() {
       state.selectedRegion = e.target.value || null;
       state.selectedCity = null;
       buildCitySelect(state.selectedRegion);
-      flyToRegion(state.selectedRegion);
-      scheduleRefreshAfterMove();
+      // Don't fly — keep full England view so all regions stay visible
+      refreshAll();
+      updateLegend();
     });
   }
 
