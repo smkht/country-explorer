@@ -1604,9 +1604,9 @@ function buildHexLayer() {
         }
       ).addTo(state.map);
 
-      // Base brand blob circles — soft delivery-radius glow per store
+      // Base brand blob circles — always blue regardless of brand color
       const blobProfile = DELIVERY_PROFILE[baseBrand] || { baseKm: 3.2 };
-      const blobColor = BRAND_COLORS[baseBrand] || '#3B5BFE';
+      const blobColor = '#3B5BFE';
       const blobRadiusM = blobProfile.baseKm * 1000;
       const blobStores = getPointsInBounds(bounds.pad(0.15), new Set([baseBrand]), null);
       const blobCircles = blobStores.map(f => {
@@ -1712,10 +1712,9 @@ function updateLegend() {
 
   if (isCoverageCompareMode()) {
     const baseBrand = selectedArr()[0];
-    const baseColor = BRAND_COLORS[baseBrand] || '#3B5BFE';
     title.textContent = `${baseBrand} vs ${state.compareBrand}`;
     scale.innerHTML = `
-      <span class="legend-block" style="background:${baseColor};opacity:0.7"></span><span>${baseBrand}</span>
+      <span class="legend-block" style="background:#3B5BFE;opacity:0.7"></span><span>${baseBrand}</span>
       <span class="legend-block" style="background:#FF6600;opacity:0.7"></span><span>${state.compareBrand}</span>
       <span class="legend-block" style="background:#9B30FF;opacity:0.7"></span><span>Overlap</span>
     `;
@@ -1734,11 +1733,12 @@ function updateLegend() {
     return;
   }
 
-  title.textContent = isLSOAReady() ? "LSOA coverage %" : "Coverage %";
+  title.textContent = "Coverage zones";
 
   const brand = selectedArr().length === 1 ? selectedArr()[0] : null;
-  const blocks = buildLegendBlocksForColor(brandColor(brand));
-  scale.innerHTML = blocks;
+  // Zones are always blue; use fixed blue for legend
+  const blocks = buildLegendBlocksForColor('#3B5BFE');
+  scale.innerHTML = blocks + (brand ? `<span style="margin-left:6px;color:var(--muted)">${brand} stores</span>` : '');
 }
 
 // ── Location markers — show at zoom >= 11 even without region ──
