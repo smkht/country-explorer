@@ -384,10 +384,11 @@ function setTab(tab) {
 function buildBrandList() {
   const wrap = document.getElementById("brandList");
   wrap.innerHTML = "";
-  state.selectedBrands = new Set(state.metrics.brands);
+  const defaultBrand = state.metrics.brands.includes("Domino's") ? "Domino's" : state.metrics.brands[0];
+  state.selectedBrands = new Set([defaultBrand]);
 
   const allEl = document.createElement("div");
-  allEl.className = "brand-pill active";
+  allEl.className = "brand-pill";
   allEl.id = "brandAllPill";
   allEl.innerHTML = `
     <span class="brand-dot" style="background:linear-gradient(135deg,#3B5BFE,#22C1F1)"></span>
@@ -400,7 +401,7 @@ function buildBrandList() {
   state.metrics.brands.forEach(b => {
     const total = state.metrics.brand_totals[b] || 0;
     const el = document.createElement("div");
-    el.className = "brand-pill";
+    el.className = `brand-pill${b === defaultBrand ? " active" : " inactive"}`;
     el.dataset.brand = b;
     el.innerHTML = `
       <span class="brand-dot" style="background:${BRAND_COLORS[b] || '#3B5BFE'}"></span>
@@ -427,10 +428,13 @@ function buildBrandList() {
       const allPill = document.getElementById("brandAllPill");
       if (allPill) allPill.classList.toggle("active", state.selectedBrands.size === state.metrics.brands.length);
       state.selectedCity = null;
+      updateComparePillsState();
       refreshAll();
     };
     wrap.appendChild(el);
   });
+
+  updateComparePillsState();
 }
 
 function setAllBrands(brands) {
@@ -443,6 +447,7 @@ function setAllBrands(brands) {
   const allPill = document.getElementById("brandAllPill");
   if (allPill) allPill.classList.toggle("active", state.selectedBrands.size === state.metrics.brands.length);
   state.selectedCity = null;
+  updateComparePillsState();
   refreshAll();
 }
 
@@ -450,6 +455,8 @@ function setAllBrands(brands) {
 function buildBrandSelects() {
   const primary = document.getElementById("primaryBrandSelect");
   const secondary = document.getElementById("secondaryBrandSelect");
+  primary.innerHTML = "";
+  secondary.innerHTML = "";
   state.metrics.brands.forEach(b => {
     const o1 = document.createElement("option");
     o1.value = b; o1.textContent = b;
@@ -463,6 +470,7 @@ function buildBrandSelects() {
   state.compareBrand = state.metrics.brands.find(b => b !== state.primaryBrand) || state.metrics.brands[1];
   primary.value = state.primaryBrand;
   secondary.value = state.compareBrand || state.secondaryBrand;
+  buildComparePills();
 }
 
 const selectedArr = () => Array.from(state.selectedBrands);
@@ -493,6 +501,60 @@ function getActiveMapBrands() {
   }
 
   return selected;
+}
+
+function buildComparePills() {
+  const wrap = document.getElementById("compareBrandPills");
+  if (!wrap) return;
+  wrap.innerHTML = "";
+
+  state.metrics.brands.forEach(brand => {
+    const el = document.createElement("div");
+    el.className = "compare-pill";
+    el.dataset.brand = brand;
+    el.innerHTML = `
+      <span class="brand-dot" style="background:${BRAND_COLORS[brand] || '#3B5BFE'}"></span>
+      <span class="brand-name">${brand}</span>
+    `;
+    el.onclick = () => {
+      if (el.classList.contains("disabled")) return;
+      state.compareBrand = brand;
+      updateComparePillsState();
+      buildHexLayer();
+      rebuildLocationsLayer();
+      updateLegend();
+    };
+    wrap.appendChild(el);
+  });
+
+  updateComparePillsState();
+}
+
+function updateComparePillsState() {
+  const wrap = document.getElementById("compareBrandPills");
+  if (!wrap || !state.metrics) return;
+  const selected = selectedArr();
+  const available = state.metrics.brands.filter(b => !selected.includes(b));
+
+  if (state.compareBrand && selected.includes(state.compareBrand)) {
+    state.compareBrand = available[0] || null;
+  }
+
+  wrap.querySelectorAll(".compare-pill").forEach(el => {
+    const brand = el.dataset.brand;
+    const disabled = selected.includes(brand);
+    el.classList.toggle("disabled", disabled);
+    el.classList.toggle("active", state.compareBrand === brand);
+  });
+
+  const compareToggle = document.getElementById("compareToggle");
+  if (compareToggle) {
+    compareToggle.disabled = !state.compareBrand;
+    if (!state.compareBrand) {
+      compareToggle.checked = false;
+      state.compareEnabled = false;
+    }
+  }
 }
 
 function regionNameFromFeature(feature) {
@@ -1523,7 +1585,11 @@ function updateLegend() {
     scale.innerHTML = `
       <span class="legend-block" style="background:${COMPARE_LAYER_STYLE.compareOnlyFill}"></span><span>Compare only</span>
       <span class="legend-block" style="background:${COMPARE_LAYER_STYLE.sharedFill}"></span><span>Shared</span>
-      <span class="legend-block" style="background:hsla(230,90%,56%,0.75)"></span><span>Base layer</span>
+      <span class="legend-block" style="background:hsla(230,85%,92%,0.5)"></span>
+      <span class="legend-block" style="background:hsla(230,85%,80%,0.6)"></span>
+      <span class="legend-block" style="background:hsla(230,88%,68%,0.7)"></span>
+      <span class="legend-block" style="background:hsla(230,90%,56%,0.75)"></span>
+      <span class="legend-block" style="background:hsla(230,95%,38%,0.85)"></span><span>Base coverage</span>
     `;
     return;
   }
