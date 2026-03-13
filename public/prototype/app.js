@@ -477,6 +477,15 @@ function isCoverageCompareMode() {
     !!state.compareBrand;
 }
 
+function shouldShowCoverageLayer() {
+  if (!state.metrics) return true;
+  if (state.heatmapMode) return true;
+  const selected = selectedArr();
+  if (!selected.length) return false;
+  const allSelected = selected.length === state.metrics.brands.length;
+  return !allSelected;
+}
+
 function isLSOAReady() {
   return !!(state.lsoaGeojson && state.lsoaMetrics);
 }
