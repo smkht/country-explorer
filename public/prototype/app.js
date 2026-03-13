@@ -2243,21 +2243,26 @@ function refreshRegionPanel() {
   document.getElementById("regionDetails").classList.remove("hidden");
 
   const region = state.selectedRegion;
-  const selected = selectedArr();
+  const activeBrands = getActiveMapBrands();
   const counts = state.metrics.region_brand_counts[region] || {};
   const area = state.metrics.region_area_km2[region] || 1;
 
   let total = 0;
-  selected.forEach(b => total += (counts[b] || 0));
+  activeBrands.forEach(b => total += (counts[b] || 0));
   document.getElementById("regionTotal").textContent = fmtInt(total);
   document.getElementById("regionDensity").textContent = (total / (area / 1000)).toFixed(1);
 
   let topBrand = null, topVal = -1;
-  selected.forEach(b => { const v = counts[b] || 0; if (v > topVal) { topVal = v; topBrand = b; } });
+  activeBrands.forEach(b => {
+    const v = counts[b] || 0;
+    if (v > topVal) { topVal = v; topBrand = b; }
+  });
   document.getElementById("regionTopBrand").textContent = topBrand || "—";
   document.getElementById("regionTopBrandHint").textContent = total ? `${fmtPct(topVal / total)} share` : "Top Brand";
 
-  const rows = selected.map(b => ({ brand: b, count: counts[b] || 0 })).sort((a, b) => b.count - a.count);
+  const rows = activeBrands
+    .map(b => ({ brand: b, count: counts[b] || 0 }))
+    .sort((a, b) => b.count - a.count);
   document.getElementById("regionBrandTable").innerHTML = `
     <tr><th>Brand</th><th class="num">Count</th><th class="num">Share</th></tr>
     ${rows.map(r => {
@@ -2271,7 +2276,9 @@ function refreshRegionPanel() {
   `;
 
   // Top cities — clickable
-  const feats = state.locationsGeojson.features.filter(f => f.properties.region === region && selected.includes(f.properties.brand));
+  const feats = state.locationsGeojson.features.filter(
+    f => f.properties.region === region && activeBrands.includes(f.properties.brand)
+  );
   const cityCounts = {};
   feats.forEach(f => { const c = (f.properties.city || "Unknown").trim(); cityCounts[c] = (cityCounts[c] || 0) + 1; });
   const topCities = Object.entries(cityCounts).map(([city, count]) => ({ city, count })).sort((a, b) => b.count - a.count).slice(0, 10);
