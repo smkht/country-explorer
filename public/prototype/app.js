@@ -319,29 +319,16 @@ function hexStrokeHeatmap(ratio) {
 }
 
 function cellSizeForZoom(zoom) {
-  const focused = !!state.selectedRegion;
-
-  // Smaller cells = smoother blob look, less obvious grid
-  if (focused) {
-    if (zoom >= 14) return 0.22;
-    if (zoom >= 13) return 0.35;
-    if (zoom >= 12) return 0.55;
-    if (zoom >= 11) return 0.8;
-    if (zoom >= 10) return 1.2;
-    if (zoom >= 9) return 2.0;
-    if (zoom >= 8) return 3.0;
-    return 4.5;
-  }
-
-  if (zoom >= 14) return 0.4;
-  if (zoom >= 13) return 0.65;
-  if (zoom >= 12) return 0.95;
-  if (zoom >= 11) return 1.4;
-  if (zoom >= 10) return 2.0;
-  if (zoom >= 9) return 3.2;
-  if (zoom >= 8) return 4.2;
-  if (zoom >= 7) return 5.2;
-  return 7;
+  // Always use small cells for smooth blob appearance
+  if (zoom >= 14) return 0.22;
+  if (zoom >= 13) return 0.35;
+  if (zoom >= 12) return 0.55;
+  if (zoom >= 11) return 0.8;
+  if (zoom >= 10) return 1.2;
+  if (zoom >= 9) return 2.0;
+  if (zoom >= 8) return 3.0;
+  if (zoom >= 7) return 4.5;
+  return 6.0;
 }
 
 // ── Country handling ──
@@ -1164,7 +1151,7 @@ function computeLSOACoverageForBrand(brand, bounds, regionFilter = null) {
   });
 }
 
-function computeCoverageFromNearbyStores(cx, cy, estPop, areaKm2, nearbyStores) {
+function computeCoverageFromNearbyStores(cx, cy, estPop, areaKm2, nearbyStores, minRadiusKm = 0) {
   if (!estPop || !areaKm2) {
     return {
       coveredPop: 0,
@@ -1190,7 +1177,10 @@ function computeCoverageFromNearbyStores(cx, cy, estPop, areaKm2, nearbyStores) 
 
   nearbyStores.forEach(store => {
     const brand = store.properties.brand;
-    const radiusKm = getRadiusForBrand(brand, popDensity);
+    const deliveryRadius = getRadiusForBrand(brand, popDensity);
+    // For large hex cells, use the cell size as minimum radius so stores within
+    // the cell always contribute (avoids blank hexes at national zoom)
+    const radiusKm = Math.max(deliveryRadius, minRadiusKm);
     const profile = DELIVERY_PROFILE[brand] || { weight: 1.0 };
     const brandWeight = profile.weight || 1.0;
 
@@ -1313,7 +1303,7 @@ function buildBrandCoverageFeatures(brand, bounds, cellSize) {
 
     const estPop = fastEstimatePopulation(hexAreaKm2, cx, cy);
     const nearbyStores = getNearbyStoresForHex(cx, cy, maxSearchRadiusKm, brandFilter, null);
-    const coverage = computeCoverageFromNearbyStores(cx, cy, estPop, hexAreaKm2, nearbyStores);
+    const coverage = computeCoverageFromNearbyStores(cx, cy, estPop, hexAreaKm2, nearbyStores, cellSize);
     const regionName = fastRegionLookup(cx, cy);
     const threshold = getBrandCoverageThreshold(brand);
 
@@ -1522,7 +1512,7 @@ function buildHexLayer() {
   const bboxH = bounds.getNorth() - bounds.getSouth();
   const approxDegPerKm = 0.009;
   const estHexCount = (bboxW / (cellSize * approxDegPerKm)) * (bboxH / (cellSize * approxDegPerKm * 0.87));
-  const effectiveCellSize = estHexCount > 2000 ? cellSize * Math.sqrt(estHexCount / 2000) : cellSize;
+  const effectiveCellSize = estHexCount > 4000 ? cellSize * Math.sqrt(estHexCount / 4000) : cellSize;
   const brandFilter = new Set(activeBrands);
   const locations = getPointsInBounds(bounds, brandFilter, null);
 
@@ -1670,7 +1660,7 @@ function buildHexLayer() {
         hex.properties._cy = cy;
         hex.properties.estPop = fastEstimatePopulation(hexAreaKm2, cx, cy);
         const nearbyStores = getNearbyStoresForHex(cx, cy, maxSearchRadiusKm, brandFilter, null);
-        const coverage = computeCoverageFromNearbyStores(cx, cy, hex.properties.estPop, hexAreaKm2, nearbyStores);
+        const coverage = computeCoverageFromNearbyStores(cx, cy, hex.properties.estPop, hexAreaKm2, nearbyStores, effectiveCellSize);
 
         hex.properties.coveragePct = coverage.coveragePct || 0;
         hex.properties.coveredPop = coverage.coveredPop || 0;
