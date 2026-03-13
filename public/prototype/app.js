@@ -2275,17 +2275,20 @@ function refreshKPIs() {
     const compareOnly = compareSummary.compareOnlyPop;
     const shared = compareSummary.sharedPop;
     const advantage = baseOnly - compareOnly;
-    const advantageLabel = advantage >= 0 ? `${selected[0]} advantage` : `${state.compareBrand} advantage`;
+    const advantageEl = document.getElementById("kpiLondonShare");
+    const advantageText = advantage === 0 ? "0"
+      : (advantage > 0 ? "+" : "−") + fmtInt(Math.round(Math.abs(advantage)));
+    advantageEl.textContent = advantageText;
+    advantageEl.style.color = advantage > 0 ? "#43A047" : advantage < 0 ? "#E53935" : "";
 
     document.getElementById("kpiTotal").textContent = baseOnly ? fmtInt(Math.round(baseOnly)) : "—";
     document.getElementById("kpiRegions").textContent = compareOnly ? fmtInt(Math.round(compareOnly)) : "—";
     document.getElementById("kpiDense").textContent = shared ? fmtInt(Math.round(shared)) : "—";
-    document.getElementById("kpiLondonShare").textContent = fmtInt(Math.round(Math.abs(advantage)));
 
     document.querySelector("#kpiTotal + .rp-kpi-label").textContent = "Base-only pop";
     document.querySelector("#kpiRegions + .rp-kpi-label").textContent = "Compare-only pop";
     document.querySelector("#kpiDense + .rp-kpi-label").textContent = "Shared pop";
-    document.querySelector("#kpiLondonShare + .rp-kpi-label").textContent = advantageLabel;
+    document.querySelector("#kpiLondonShare + .rp-kpi-label").textContent = "Coverage advantage";
     return;
   }
 
