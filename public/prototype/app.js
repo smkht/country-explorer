@@ -133,7 +133,7 @@ const REGION_CENTERS = {
   "Yorkshire and The Humber": { lat: 53.7, lon: -1.3, zoom: 8 }
 };
 
-const ENGLAND_VIEW = { lat: 52.8, lon: -1.5, zoom: 6.5 };
+const ENGLAND_VIEW = { lat: 52.8, lon: -1.5, zoom: 7.5 };
 
 // Regional population estimates (ONS mid-2023)
 const REGION_POPULATION = {
@@ -340,9 +340,9 @@ function cellSizeForZoom(zoom) {
   if (zoom >= 11) return 1.8;
   if (zoom >= 10) return 2.5;
   if (zoom >= 9) return 4;
-  if (zoom >= 8) return 6;
-  if (zoom >= 7) return 12;
-  return 18;
+  if (zoom >= 8) return 5;
+  if (zoom >= 7) return 6;
+  return 8;
 }
 
 // ── Country handling ──
