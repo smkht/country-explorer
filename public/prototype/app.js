@@ -2523,11 +2523,12 @@ function renderRegionTable() {
       const mapBrands = getActiveMapBrands();
       const colspan = compareMode ? 6 : 6;
 
+      const fmtEff = v => v >= 1000 ? (v / 1000).toFixed(1) + "k" : Math.round(v).toString();
       if (mapBrands.length === 2) {
         const [b1, b2] = mapBrands;
-        // Only show cities where both brands are present
+        // Only show cities where both brands have ≥2 stores (enough for meaningful coverage estimate)
         const filteredRows = cityRows.filter(c =>
-          safeBrandValue(c.brandCounts, b1) > 0 && safeBrandValue(c.brandCounts, b2) > 0
+          safeBrandValue(c.brandCounts, b1) >= 2 && safeBrandValue(c.brandCounts, b2) >= 2
         );
         html += `
           <tr class="region-accordion"><td colspan="${colspan}">
@@ -2535,34 +2536,46 @@ function renderRegionTable() {
               <tr>
                 <th>City</th>
                 <th class="num">${b1.split("'")[0]} Locs</th>
+                <th class="num">${b1.split("'")[0]} Cov/loc</th>
                 <th class="num">${b2.split("'")[0]} Locs</th>
+                <th class="num">${b2.split("'")[0]} Cov/loc</th>
                 <th class="num">Store advantage</th>
               </tr>
               ${filteredRows.slice(0, 25).map(c => {
                 const l1 = safeBrandValue(c.brandCounts, b1);
                 const l2 = safeBrandValue(c.brandCounts, b2);
+                const d1 = c.approxArea > 0 ? l1 / (c.approxArea / 1000) : 0;
+                const d2 = c.approxArea > 0 ? l2 / (c.approxArea / 1000) : 0;
+                const cm1 = computeCoverageMetrics(l1, c.approxArea, c.approxPop, 1, d1, {[b1]: l1});
+                const cm2 = computeCoverageMetrics(l2, c.approxArea, c.approxPop, 1, d2, {[b2]: l2});
+                const eff1 = l1 > 0 && cm1.coveredPop ? cm1.coveredPop / l1 : null;
+                const eff2 = l2 > 0 && cm2.coveredPop ? cm2.coveredPop / l2 : null;
                 const gap = l1 - l2;
                 const gc = gap > 0 ? "#43A047" : gap < 0 ? "#E53935" : "var(--muted)";
                 return `
                   <tr class="city-row ${c.city === state.selectedCity ? 'active' : ''}" data-city="${c.city}" data-region="${r.region}">
                     <td>${c.city}</td>
                     <td class="num">${fmtInt(l1)}</td>
+                    <td class="num">${eff1 !== null ? fmtEff(eff1) : "—"}</td>
                     <td class="num">${fmtInt(l2)}</td>
+                    <td class="num">${eff2 !== null ? fmtEff(eff2) : "—"}</td>
                     <td class="num" style="color:${gc}">${gap===0?"=":`${gap>0?"+":""}${gap}`}</td>
                   </tr>`;
               }).join("")}
-              ${filteredRows.length === 0 ? `<tr><td colspan="4" style="color:var(--muted);text-align:center;padding:10px">No cities with both brands present</td></tr>` : ''}
+              ${filteredRows.length === 0 ? `<tr><td colspan="6" style="color:var(--muted);text-align:center;padding:10px">No cities with both brands having 2+ locations</td></tr>` : ''}
             </table>
           </td></tr>`;
       } else {
         const brand = mapBrands[0] || '';
-        const filteredRows = cityRows.filter(c => (brand ? safeBrandValue(c.brandCounts, brand) : c.total) > 0);
+        // Only show cities with ≥2 stores for meaningful coverage estimate
+        const filteredRows = cityRows.filter(c => (brand ? safeBrandValue(c.brandCounts, brand) : c.total) >= 2 && c.efficiency > 0);
         html += `
           <tr class="region-accordion"><td colspan="${colspan}">
             <table class="table">
               <tr>
                 <th>City</th>
                 <th class="num">Locations</th>
+                <th class="num">Cov/loc</th>
               </tr>
               ${filteredRows.slice(0, 25).map(c => {
                 const locs = brand ? safeBrandValue(c.brandCounts, brand) : c.total;
@@ -2570,6 +2583,7 @@ function renderRegionTable() {
                   <tr class="city-row ${c.city === state.selectedCity ? 'active' : ''}" data-city="${c.city}" data-region="${r.region}">
                     <td>${c.city}</td>
                     <td class="num">${fmtInt(locs)}</td>
+                    <td class="num">${fmtEff(c.efficiency)}</td>
                   </tr>`;
               }).join("")}
             </table>
