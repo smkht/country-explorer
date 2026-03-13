@@ -438,13 +438,7 @@ function buildBrandList() {
 
 function setAllBrands(brands) {
   state.selectedBrands = new Set(brands);
-  document.querySelectorAll(".brand-pill").forEach(el => {
-    const name = el.dataset.brand;
-    if (!name) return;
-    el.classList.toggle("inactive", !state.selectedBrands.has(name));
-  });
-  const allPill = document.getElementById("brandAllPill");
-  if (allPill) allPill.classList.toggle("active", state.selectedBrands.size === state.metrics.brands.length);
+  updateBrandPillSelection();
   state.selectedCity = null;
   updateComparePillsState();
   refreshAll();
@@ -531,6 +525,16 @@ function buildComparePills() {
   updateComparePillsState();
 }
 
+function updateBrandPillSelection() {
+  document.querySelectorAll(".brand-pill").forEach(el => {
+    const name = el.dataset.brand;
+    if (!name) return;
+    el.classList.toggle("inactive", !state.selectedBrands.has(name));
+  });
+  const allPill = document.getElementById("brandAllPill");
+  if (allPill) allPill.classList.toggle("active", state.selectedBrands.size === state.metrics.brands.length);
+}
+
 function updateComparePillsState() {
   const wrap = document.getElementById("compareBrandPills");
   if (!wrap || !state.metrics) return;
@@ -541,6 +545,10 @@ function updateComparePillsState() {
     state.compareBrand = available[0] || null;
   }
 
+  if (!state.compareBrand && available.length) {
+    state.compareBrand = available[0];
+  }
+
   wrap.querySelectorAll(".compare-pill").forEach(el => {
     const brand = el.dataset.brand;
     const disabled = selected.includes(brand);
@@ -549,12 +557,8 @@ function updateComparePillsState() {
   });
 
   const compareToggle = document.getElementById("compareToggle");
-  if (compareToggle) {
-    compareToggle.disabled = !state.compareBrand;
-    if (!state.compareBrand) {
-      compareToggle.checked = false;
-      state.compareEnabled = false;
-    }
+  if (compareToggle && state.compareBrand && compareToggle.checked) {
+    state.compareEnabled = true;
   }
 }
 
@@ -3190,7 +3194,12 @@ function wireUI() {
       state.compareEnabled = e.target.checked;
       if (state.compareEnabled && !state.compareBrand) {
         const selected = selectedArr();
-        const available = state.metrics.brands.filter(b => !selected.includes(b));
+        let baseBrand = selected.length === 1 ? selected[0] : (state.metrics.brands.includes("Domino's") ? "Domino's" : state.metrics.brands[0]);
+        if (selected.length !== 1) {
+          state.selectedBrands = new Set([baseBrand]);
+          updateBrandPillSelection();
+        }
+        const available = state.metrics.brands.filter(b => b !== baseBrand);
         state.compareBrand = available[0] || null;
         updateComparePillsState();
       }
