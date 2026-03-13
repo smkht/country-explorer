@@ -2301,7 +2301,6 @@ function renderRegionTable() {
 
   rows.forEach(r => {
     const isActive = r.region === state.selectedRegion;
-    if (state.selectedRegion && !isActive) return;
 
     html += `
       <tr class="region-row ${isActive ? "active" : ""}" data-region="${r.region}">
