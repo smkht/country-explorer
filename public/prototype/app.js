@@ -250,14 +250,16 @@ function hexStrokeDensity(count, max, pop, maxPop) {
 }
 
 const COMPARE_LAYER_STYLE = {
-  baseOnlyFill: "rgba(59,91,254,0.42)",
-  baseOnlyStroke: "rgba(59,91,254,0.95)",
-  compareOnlyFill: "rgba(255,122,26,0.24)",
-  compareOnlyStroke: "rgba(255,122,26,0.98)",
-  sharedFill: "rgba(156,102,180,0.22)",
-  sharedStroke: "rgba(156,102,180,0.98)",
-  noCoverageFill: "rgba(160,170,190,0.06)",
-  noCoverageStroke: "rgba(160,170,190,0.12)"
+  baseOnlyFill: "rgba(59,91,254,0.34)",
+  baseOnlyStroke: "rgba(59,91,254,0.92)",
+  compareOnlyFill: "rgba(255,122,26,0.30)",
+  compareOnlyStroke: "rgba(255,122,26,0.92)",
+  missingFill: "rgba(255,122,26,0.46)",
+  missingStroke: "rgba(255,122,26,1)",
+  sharedFill: "rgba(110,76,170,0.54)",
+  sharedStroke: "rgba(110,76,170,1)",
+  noCoverageFill: "rgba(160,170,190,0.04)",
+  noCoverageStroke: "rgba(160,170,190,0.10)"
 };
 
 function hexFillCoverageMode(value, max, mode, pop, maxPop) {
@@ -1013,6 +1015,66 @@ function getBrandCoverageThreshold(brand) {
   return byBrand[brand] ?? state.coverageThreshold ?? 0.30;
 }
 
+function getCoverageDisplayThreshold() {
+  return state.selectedRegion ? 0.12 : 0.06;
+}
+
+function brandColor(brand) {
+  return BRAND_COLORS[brand] || "#3B5BFE";
+}
+
+function parseHexColor(hex) {
+  const safe = (hex || "").replace("#", "");
+  if (safe.length === 3) {
+    const r = parseInt(safe[0] + safe[0], 16);
+    const g = parseInt(safe[1] + safe[1], 16);
+    const b = parseInt(safe[2] + safe[2], 16);
+    return { r, g, b };
+  }
+  if (safe.length === 6) {
+    const r = parseInt(safe.slice(0, 2), 16);
+    const g = parseInt(safe.slice(2, 4), 16);
+    const b = parseInt(safe.slice(4, 6), 16);
+    return { r, g, b };
+  }
+  return { r: 59, g: 91, b: 254 };
+}
+
+function lightenRgb(rgb, amount) {
+  const t = Math.max(0, Math.min(1, amount / 100));
+  return {
+    r: Math.round(rgb.r + (255 - rgb.r) * t),
+    g: Math.round(rgb.g + (255 - rgb.g) * t),
+    b: Math.round(rgb.b + (255 - rgb.b) * t)
+  };
+}
+
+function buildLegendBlocksForColor(color) {
+  const rgb = parseHexColor(color);
+  const steps = [
+    { light: 86, alpha: 0.35 },
+    { light: 70, alpha: 0.45 },
+    { light: 54, alpha: 0.58 },
+    { light: 40, alpha: 0.72 },
+    { light: 26, alpha: 0.86 }
+  ];
+  return steps.map(step => {
+    const mixed = lightenRgb(rgb, step.light);
+    return `<span class="legend-block" style="background:rgba(${mixed.r},${mixed.g},${mixed.b},${step.alpha})"></span>`;
+  }).join("");
+}
+
+function fillForBrandCoverage(feature) {
+  const p = feature.properties || {};
+  const t = Math.max(0, Math.min(1, p.coveragePct || 0));
+  const overlapBoost = Math.max(0, Math.min(1, (p.overlapIndex || 0) / 2));
+  const alpha = 0.10 + t * 0.45 + overlapBoost * 0.18;
+  const light = 78 - t * 26 - overlapBoost * 8;
+  const rgb = parseHexColor(brandColor(p.brand));
+  const mixed = lightenRgb(rgb, 100 - light);
+  return `rgba(${mixed.r},${mixed.g},${mixed.b},${alpha})`;
+}
+
 function getCoverageConfidence(contributingStores, estPop, regionName) {
   let score = 0;
   if (contributingStores >= 3) score += 0.45;
@@ -1248,10 +1310,17 @@ function buildBrandCoverageFeatures(brand, bounds, cellSize) {
   };
 }
 
-function classifyCoverageState(baseCovered, compareCovered) {
-  if (baseCovered && compareCovered) return "shared";
-  if (compareCovered) return "compareOnly";
-  if (baseCovered) return "baseOnly";
+function classifyCompareCell(baseFeature, compareFeature) {
+  const base = baseFeature?.properties?.coveragePct || 0;
+  const comp = compareFeature?.properties?.coveragePct || 0;
+
+  const soft = state.selectedRegion ? 0.14 : 0.08;
+  const strong = state.selectedRegion ? 0.28 : 0.18;
+
+  if (base >= soft && comp >= soft) return "shared";
+  if (base >= soft && comp < soft) return "baseOnly";
+  if (comp >= strong && base < soft) return "missingFromBase";
+  if (comp >= soft && base < soft) return "compareOnly";
   return "none";
 }
 
@@ -1277,9 +1346,7 @@ function buildCompareHexLayer(baseHexes, compareBrand, bounds, cellSize) {
     const key = `${baseHex.properties._cx.toFixed(5)}|${baseHex.properties._cy.toFixed(5)}`;
     const compareHex = compareIndex.get(key);
 
-    const baseCovered = !!baseHex.properties.isCovered;
-    const compareCovered = !!(compareHex && compareHex.properties.isCovered);
-    const coverState = classifyCoverageState(baseCovered, compareCovered);
+    const coverState = classifyCompareCell(baseHex, compareHex);
 
     if (coverState === "none" || coverState === "baseOnly") return;
 
@@ -1300,20 +1367,19 @@ function buildCompareHexLayer(baseHexes, compareBrand, bounds, cellSize) {
     { type: "FeatureCollection", features: overlayFeatures },
     {
       style: f => {
-        const inRegion = !state.selectedRegion || fastRegionLookup(f.properties._cx, f.properties._cy) === state.selectedRegion;
-        if (!inRegion) {
-          return {
-            fillColor: "transparent",
-            fillOpacity: 0,
-            color: "transparent",
-            weight: 0,
-            opacity: 0
-          };
-        }
         const s = f.properties.coverState;
         if (s === "shared") {
           return {
             fillColor: COMPARE_LAYER_STYLE.sharedFill,
+            color: "transparent",
+            weight: 0,
+            fillOpacity: 1,
+            opacity: 1
+          };
+        }
+        if (s === "missingFromBase") {
+          return {
+            fillColor: COMPARE_LAYER_STYLE.missingFill,
             color: "transparent",
             weight: 0,
             fillOpacity: 1,
@@ -1341,6 +1407,7 @@ function buildCompareHexLayer(baseHexes, compareBrand, bounds, cellSize) {
         const p = feature.properties;
         const stateLabel =
           p.coverState === "shared" ? "Shared coverage" :
+          p.coverState === "missingFromBase" ? `${state.compareBrand} strength gap` :
           p.coverState === "compareOnly" ? `${state.compareBrand} only` :
           `${state.baseBrand} only`;
 
@@ -1434,16 +1501,6 @@ function buildHexLayer() {
       { type: "FeatureCollection", features: hexGrid.features },
       {
         style: f => {
-          if (state.selectedRegion && !isHexInSelectedRegion(f)) {
-            return {
-              fillColor: "transparent",
-              fillOpacity: 0,
-              color: "transparent",
-              weight: 0,
-              opacity: 0
-            };
-          }
-
           const p = f.properties;
           const maxPop = state._hexMaxPop || 1;
 
@@ -1498,28 +1555,11 @@ function buildHexLayer() {
         { type: "FeatureCollection", features: baseFeatures },
         {
           style: f => {
-            if (state.selectedRegion && !isHexInSelectedRegion(f)) {
-              return {
-                fillColor: "transparent",
-                fillOpacity: 0,
-                color: "transparent",
-                weight: 0,
-                opacity: 0
-              };
-            }
+            const displayThreshold = getCoverageDisplayThreshold();
+            const isDisplay = (f.properties.coveragePct || 0) >= displayThreshold;
+            const fill = isDisplay ? fillForBrandCoverage(f) : COMPARE_LAYER_STYLE.noCoverageFill;
 
-            const covered = !!f.properties.isCovered;
-            const fill = covered
-              ? hexFillCoverageMode(
-                  f.properties.displayValue,
-                  maxValue,
-                  state.coverageView,
-                  f.properties.estPop,
-                  maxPop
-                )
-              : COMPARE_LAYER_STYLE.noCoverageFill;
-
-            const borderlessCovered = featureMode === "lsoa" || (f.properties.coveragePct || 0) > 0.10;
+            const borderlessCovered = featureMode === "lsoa" || isDisplay;
 
             return {
               fillColor: fill,
@@ -1600,25 +1640,19 @@ function buildHexLayer() {
         { type: "FeatureCollection", features: hexGrid.features },
         {
           style: f => {
-            if (state.selectedRegion && !isHexInSelectedRegion(f)) {
-              return {
-                fillColor: "transparent",
-                fillOpacity: 0,
-                color: "transparent",
-                weight: 0,
-                opacity: 0
-              };
-            }
-
-            const borderlessCovered = (f.properties.coveragePct || 0) > 0.10;
+            const displayThreshold = getCoverageDisplayThreshold();
+            const isDisplay = (f.properties.coveragePct || 0) >= displayThreshold;
+            const borderlessCovered = isDisplay;
             return {
-              fillColor: hexFillCoverageMode(
-                f.properties.displayValue,
-                maxValue,
-                state.coverageView,
-                f.properties.estPop,
-                maxPop
-              ),
+              fillColor: isDisplay
+                ? hexFillCoverageMode(
+                    f.properties.displayValue,
+                    maxValue,
+                    state.coverageView,
+                    f.properties.estPop,
+                    maxPop
+                  )
+                : COMPARE_LAYER_STYLE.noCoverageFill,
               fillOpacity: 1,
               weight: borderlessCovered ? 0 : 0.6,
               color: borderlessCovered ? "transparent" : COMPARE_LAYER_STYLE.noCoverageStroke,
@@ -1653,15 +1687,14 @@ function updateLegend() {
   }
 
   if (isCoverageCompareMode()) {
-    title.textContent = `${selectedArr()[0]} vs ${state.compareBrand}`;
+    const baseBrand = selectedArr()[0];
+    title.textContent = `${baseBrand} vs ${state.compareBrand}`;
+    const baseBlocks = buildLegendBlocksForColor(brandColor(baseBrand));
     scale.innerHTML = `
       <span class="legend-block" style="background:${COMPARE_LAYER_STYLE.compareOnlyFill}"></span><span>Compare only</span>
+      <span class="legend-block" style="background:${COMPARE_LAYER_STYLE.missingFill}"></span><span>Missing</span>
       <span class="legend-block" style="background:${COMPARE_LAYER_STYLE.sharedFill}"></span><span>Shared</span>
-      <span class="legend-block" style="background:hsla(230,85%,92%,0.5)"></span>
-      <span class="legend-block" style="background:hsla(230,85%,80%,0.6)"></span>
-      <span class="legend-block" style="background:hsla(230,88%,68%,0.7)"></span>
-      <span class="legend-block" style="background:hsla(230,90%,56%,0.75)"></span>
-      <span class="legend-block" style="background:hsla(230,95%,38%,0.85)"></span><span>Base coverage</span>
+      ${baseBlocks}<span>Base coverage</span>
     `;
     return;
   }
@@ -1683,13 +1716,9 @@ function updateLegend() {
   else if (state.coverageView === "overlap") title.textContent = "Overlap";
   else title.textContent = "Coverage %";
 
-  scale.innerHTML = `
-    <span class="legend-block" style="background:hsla(230,85%,92%,0.5)"></span>
-    <span class="legend-block" style="background:hsla(230,85%,80%,0.6)"></span>
-    <span class="legend-block" style="background:hsla(230,88%,68%,0.7)"></span>
-    <span class="legend-block" style="background:hsla(230,90%,56%,0.75)"></span>
-    <span class="legend-block" style="background:hsla(230,95%,38%,0.85)"></span>
-  `;
+  const brand = selectedArr().length === 1 ? selectedArr()[0] : null;
+  const blocks = buildLegendBlocksForColor(brandColor(brand));
+  scale.innerHTML = blocks;
 }
 
 // ── Location markers — show at zoom >= 11 even without region ──
