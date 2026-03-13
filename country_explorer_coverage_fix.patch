@@ -1,0 +1,238 @@
+*** Begin Patch
+*** Update File: public/prototype/app.js
+@@
+-const ENGLAND_VIEW = { lat: 52.8, lon: -1.5, zoom: 7.5 };
++const ENGLAND_VIEW = { lat: 52.8, lon: -1.5, zoom: 8 };
+@@
+ function cellSizeForZoom(zoom) {
+   const focused = !!state.selectedRegion;
+ 
+   if (focused) {
+     if (zoom >= 14) return 0.35;
+     if (zoom >= 13) return 0.55;
+     if (zoom >= 12) return 0.8;
+     if (zoom >= 11) return 1.1;
+     if (zoom >= 10) return 1.6;
+-    if (zoom >= 9) return 2.6;
+-    if (zoom >= 8) return 4;
+-    return 6;
++    if (zoom >= 9) return 2.2;
++    if (zoom >= 8) return 3.2;
++    return 4.5;
+   }
+ 
+   if (zoom >= 14) return 0.6;
+   if (zoom >= 13) return 0.9;
+   if (zoom >= 12) return 1.2;
+   if (zoom >= 11) return 1.8;
+-  if (zoom >= 10) return 2.5;
+-  if (zoom >= 9) return 4;
+-  if (zoom >= 8) return 5;
+-  if (zoom >= 7) return 6;
+-  return 8;
++  if (zoom >= 10) return 2.2;
++  if (zoom >= 9) return 3.2;
++  if (zoom >= 8) return 4.2;
++  if (zoom >= 7) return 5;
++  return 6;
+ }
+@@
+ const selectedArr = () => Array.from(state.selectedBrands);
++
++function getBaseBrandForCompare() {
++  const selected = selectedArr();
++
++  if (selected.length === 1) return selected[0];
++  if (state.baseBrand && state.metrics?.brands?.includes(state.baseBrand)) return state.baseBrand;
++  if (state.primaryBrand && state.metrics?.brands?.includes(state.primaryBrand)) return state.primaryBrand;
++  return selected[0] || state.metrics?.brands?.[0] || null;
++}
+ 
+ function isCoverageCompareMode() {
+   return !state.heatmapMode &&
+     state.compareEnabled &&
+-    selectedArr().length === 1 &&
+-    !!state.compareBrand;
++    !!getBaseBrandForCompare() &&
++    !!state.compareBrand &&
++    getBaseBrandForCompare() !== state.compareBrand;
+ }
+ 
+ function shouldShowCoverageLayer() {
+   if (!state.metrics) return true;
+   if (state.heatmapMode) return true;
+   const selected = selectedArr();
+   if (!selected.length) return false;
+-  const allSelected = selected.length === state.metrics.brands.length;
+-  return !allSelected;
++  return true;
+ }
+@@
+ function getActiveMapBrands() {
+   const selected = selectedArr();
+@@
+   }
+ 
+   if (isCoverageCompareMode()) {
+-    return [selected[0], state.compareBrand].filter(Boolean);
++    const baseBrand = getBaseBrandForCompare();
++    return [baseBrand, state.compareBrand].filter(Boolean);
+   }
+ 
+   return selected;
+ }
+@@
+ function updateComparePillsState() {
+   const wrap = document.getElementById("compareBrandPills");
+   if (!wrap || !state.metrics) return;
+-  const selected = selectedArr();
+-  const available = state.metrics.brands.filter(b => !selected.includes(b));
++  const baseBrand = getBaseBrandForCompare();
++  const available = state.metrics.brands.filter(b => b !== baseBrand);
+ 
+-  if (state.compareBrand && selected.includes(state.compareBrand)) {
++  if (state.compareBrand && state.compareBrand === baseBrand) {
+     state.compareBrand = available[0] || null;
+   }
+@@
+ 
+   wrap.querySelectorAll(".compare-pill").forEach(el => {
+     const brand = el.dataset.brand;
+-    const disabled = selected.includes(brand);
++    const disabled = brand === baseBrand;
+     el.classList.toggle("disabled", disabled);
+     el.classList.toggle("active", state.compareBrand === brand);
+   });
+@@
+ function getCoverageDisplayThreshold() {
+   return state.selectedRegion ? 0.12 : 0.06;
+ }
++
++function getCoveragePresenceFloor() {
++  return state.selectedRegion ? 0.12 : 0.08;
++}
++
++function normalizeCoverageFeatureForDisplay(feature) {
++  const p = feature.properties || {};
++  const hasStoreSignal = (p.contributingStores || 0) > 0 || Object.keys(p.brandCounts || {}).length > 0;
++  const floor = hasStoreSignal ? getCoveragePresenceFloor() : 0;
++  p.hasStoreSignal = hasStoreSignal;
++  p.displayCoveragePct = Math.max(p.coveragePct || 0, floor);
++  p.isDisplayVisible = hasStoreSignal || (p.coveragePct || 0) >= getCoverageDisplayThreshold();
++  return feature;
++}
+@@
+ function computeLSOACoverageForBrand(brand, bounds, regionFilter = null) {
+@@
+     clone.properties.confidence = getCoverageConfidence(
+       coverage.contributingStores || 0,
+       estPop,
+       regionName
+     );
+     clone.properties.threshold = threshold;
+     clone.properties.isCovered = (coverage.coveragePct || 0) >= threshold;
+-    return clone;
++    return normalizeCoverageFeatureForDisplay(clone);
+   });
+ }
+@@
+ function buildBrandCoverageFeatures(brand, bounds, cellSize) {
+-  if (isLSOAReady() && (state.selectedRegion || (state.map && state.map.getZoom() >= 9))) {
++  if (isLSOAReady() && (state.selectedCity || (state.map && state.map.getZoom() >= 11))) {
+     const features = computeLSOACoverageForBrand(brand, bounds, state.selectedRegion || null);
+     return {
+       features,
+       featureMode: "lsoa"
+@@
+     hex.properties.confidence = getCoverageConfidence(
+       coverage.contributingStores || 0,
+       estPop,
+       regionName
+     );
+     hex.properties.isCovered = (coverage.coveragePct || 0) >= threshold;
+     hex.properties.threshold = threshold;
++    normalizeCoverageFeatureForDisplay(hex);
+   });
+@@
+ function classifyCompareCell(baseFeature, compareFeature) {
+-  const base = baseFeature?.properties?.coveragePct || 0;
+-  const comp = compareFeature?.properties?.coveragePct || 0;
++  const base = baseFeature?.properties?.displayCoveragePct ?? baseFeature?.properties?.coveragePct ?? 0;
++  const comp = compareFeature?.properties?.displayCoveragePct ?? compareFeature?.properties?.coveragePct ?? 0;
+@@
+-    const baseBrand = selected.length === 1 ? selected[0] : null;
++    const baseBrand = isCoverageCompareMode()
++      ? getBaseBrandForCompare()
++      : (selected.length === 1 ? selected[0] : null);
+     state.baseBrand = baseBrand;
+@@
+           style: f => {
+-            const displayThreshold = getCoverageDisplayThreshold();
+-            const isDisplay = (f.properties.coveragePct || 0) >= displayThreshold;
++            const isDisplay = !!f.properties.isDisplayVisible;
+             const fill = isDisplay ? fillForBrandCoverage(f) : COMPARE_LAYER_STYLE.noCoverageFill;
+@@
+         const coverage = computeCoverageFromNearbyStores(cx, cy, hex.properties.estPop, hexAreaKm2, nearbyStores);
+ 
+         hex.properties.coveragePct = coverage.coveragePct || 0;
+         hex.properties.coveredPop = coverage.coveredPop || 0;
+         hex.properties.overlapIndex = coverage.overlapIndex || 0;
+         hex.properties.contributingStores = coverage.contributingStores || 0;
+         hex.properties.coveredAreaKm2 = coverage.coveredAreaKm2 || 0;
+         hex.properties.isCovered = (coverage.coveragePct || 0) >= state.coverageThreshold;
++        hex.properties.brandCounts = coverage.brandCounts || {};
++        normalizeCoverageFeatureForDisplay(hex);
+@@
+           style: f => {
+-            const displayThreshold = getCoverageDisplayThreshold();
+-            const isDisplay = (f.properties.coveragePct || 0) >= displayThreshold;
++            const isDisplay = !!f.properties.isDisplayVisible;
+             const borderlessCovered = isDisplay;
+             return {
+               fillColor: isDisplay
+                 ? hexFillCoverageMode(
+-                    f.properties.displayValue,
++                    state.coverageView === "coverage"
++                      ? (f.properties.displayCoveragePct || 0) * 100
++                      : f.properties.displayValue,
+                     maxValue,
+                     state.coverageView,
+                     f.properties.estPop,
+@@
+   if (isCoverageCompareMode()) {
+-    const baseBrand = selectedArr()[0];
++    const baseBrand = getBaseBrandForCompare();
+     title.textContent = `${baseBrand} vs ${state.compareBrand}`;
+@@
+   const selected = selectedArr();
+   const baseBrand = selected.length === 1 ? selected[0] : null;
++  if (isCoverageCompareMode()) state.baseBrand = getBaseBrandForCompare();
+   const compareBrand = isCoverageCompareMode() ? state.compareBrand : null;
+@@
+   if (isCoverageCompareMode()) {
+     const compareSummary = getCompareSummaryFromHexes();
++    const baseBrand = getBaseBrandForCompare();
+     const baseOnly = compareSummary.baseOnlyPop;
+     const compareOnly = compareSummary.compareOnlyPop;
+     const shared = compareSummary.sharedPop;
+     const advantage = baseOnly - compareOnly;
+-    const advantageLabel = advantage >= 0 ? `${selected[0]} advantage` : `${state.compareBrand} advantage`;
++    const advantageLabel = advantage >= 0 ? `${baseBrand} advantage` : `${state.compareBrand} advantage`;
+@@
+   if (compareToggle) {
+     compareToggle.addEventListener("change", e => {
+       state.compareEnabled = e.target.checked;
+       if (state.compareEnabled && !state.compareBrand) {
+-        const selected = selectedArr();
+-        let baseBrand = selected.length === 1 ? selected[0] : (state.metrics.brands.includes("Domino's") ? "Domino's" : state.metrics.brands[0]);
+-        if (selected.length !== 1) {
+-          state.selectedBrands = new Set([baseBrand]);
+-          updateBrandPillSelection();
+-        }
++        const baseBrand = getBaseBrandForCompare() || (state.metrics.brands.includes("Domino's") ? "Domino's" : state.metrics.brands[0]);
++        state.baseBrand = baseBrand;
+         const available = state.metrics.brands.filter(b => b !== baseBrand);
+         state.compareBrand = available[0] || null;
+         updateComparePillsState();
+       }
+*** End Patch
