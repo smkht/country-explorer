@@ -199,7 +199,7 @@ const state = {
   compareBrand: null,
   compareHexLayer: null,
   baseBrand: null,
-  coverageThreshold: 0.35,
+  coverageThreshold: 0.24,
   showOnlyCovered: false,
   country: "england",
   regionSort: "density",
@@ -318,31 +318,29 @@ function hexStrokeHeatmap(ratio) {
   return `rgba(76,175,80,${0.2 + 0.15 * ((t - 0.5) * 2)})`;
 }
 
-function getMapScope() {
-  if (state.selectedCity) return "city";
-  if (state.selectedRegion) return "region";
-  return "country";
-}
-
 function cellSizeForZoom(zoom) {
-  const scope = getMapScope();
+  const focused = !!state.selectedRegion;
 
-  // Stable cell size by scope.
-  if (scope === "city") return zoom >= 13 ? 0.8 : 1.0;
-  if (scope === "region") return 2.4;
-  return 7.5;
-}
+  if (focused) {
+    if (zoom >= 14) return 0.35;
+    if (zoom >= 13) return 0.55;
+    if (zoom >= 12) return 0.8;
+    if (zoom >= 11) return 1.1;
+    if (zoom >= 10) return 1.6;
+    if (zoom >= 9) return 2.6;
+    if (zoom >= 8) return 4;
+    return 6;
+  }
 
-function getMaxConfiguredRadiusKm() {
-  return Object.values(DELIVERY_PROFILE || {}).reduce((m, p) => {
-    const vals = [p?.baseKm, p?.urbanKm, p?.suburbanKm, p?.ruralKm].filter(v => Number.isFinite(v));
-    return Math.max(m, ...(vals.length ? vals : [4.2]));
-  }, 4.2);
-}
-
-function getCoverageSearchRadiusKm(cellSizeKm) {
-  const maxRadius = getMaxConfiguredRadiusKm();
-  return Math.max(6, maxRadius + Math.max(1.2, cellSizeKm * 1.6));
+  if (zoom >= 14) return 0.6;
+  if (zoom >= 13) return 0.9;
+  if (zoom >= 12) return 1.2;
+  if (zoom >= 11) return 1.8;
+  if (zoom >= 10) return 2.5;
+  if (zoom >= 9) return 4;
+  if (zoom >= 8) return 6;
+  if (zoom >= 7) return 12;
+  return 18;
 }
 
 // ── Country handling ──
@@ -385,7 +383,6 @@ function setTab(tab) {
 // ── Build brand list ──
 function buildBrandList() {
   const wrap = document.getElementById("brandList");
-  if (!wrap) return;
   wrap.innerHTML = "";
   state.selectedBrands = new Set(state.metrics.brands);
 
@@ -473,6 +470,19 @@ function buildBrandSelects() {
 
 const selectedArr = () => Array.from(state.selectedBrands);
 
+
+function setTextSafe(id, value) {
+  const el = document.getElementById(id);
+  if (el) el.textContent = value;
+  return el;
+}
+function setHTMLSafe(id, value) {
+  const el = document.getElementById(id);
+  if (el) el.innerHTML = value;
+  return el;
+}
+
+
 function isCoverageCompareMode() {
   return !state.heatmapMode &&
     state.compareEnabled &&
@@ -518,7 +528,9 @@ function buildComparePills() {
       if (el.classList.contains("disabled")) return;
       state.compareBrand = brand;
       updateComparePillsState();
-      refreshAll();
+      buildHexLayer();
+      rebuildLocationsLayer();
+      updateLegend();
     };
     wrap.appendChild(el);
   });
@@ -848,105 +860,27 @@ function buildRegionGrid() {
   if (_regionGridCache) return _regionGridCache;
   const step = 0.1; // ~11km resolution
   const grid = {};
-  const regions = state.regionsGeojson.features.map(feature => {
-    const bbox = turf.bbox(feature);
-    return {
-      feature,
-      name: feature.properties.rgn24nm || feature.properties.name || '',
-      bbox
-    };
-  });
-
+  // Sample points across England bounding box
   for (let lat = 49.5; lat <= 56; lat += step) {
     for (let lon = -6; lon <= 2; lon += step) {
       const pt = turf.point([lon, lat]);
-      for (const region of regions) {
-        const [w, s, e, n] = region.bbox;
-        if (lon < w || lon > e || lat < s || lat > n) continue;
-        if (turf.booleanPointInPolygon(pt, region.feature)) {
+      for (const region of state.regionsGeojson.features) {
+        if (turf.booleanPointInPolygon(pt, region)) {
           const key = `${Math.floor(lon / step)},${Math.floor(lat / step)}`;
-          grid[key] = region.name;
+          grid[key] = region.properties.rgn24nm || region.properties.name || '';
           break;
         }
       }
     }
   }
-  _regionGridCache = { step, grid, regions };
+  _regionGridCache = { step, grid };
   return _regionGridCache;
 }
 
 function fastRegionLookup(lon, lat) {
   const rg = buildRegionGrid();
   const key = `${Math.floor(lon / rg.step)},${Math.floor(lat / rg.step)}`;
-  if (rg.grid[key]) return rg.grid[key];
-
-  const pt = turf.point([lon, lat]);
-  for (const region of rg.regions) {
-    const [w, s, e, n] = region.bbox;
-    if (lon < w || lon > e || lat < s || lat > n) continue;
-    if (turf.booleanPointInPolygon(pt, region.feature)) return region.name;
-  }
-  return null;
-}
-
-function getRegionFeature(regionName) {
-  return state.regionsGeojson?.features?.find(f => regionNameFromFeature(f) === regionName) || null;
-}
-
-function getRegionBounds(regionName, pad = 0.08) {
-  const feature = getRegionFeature(regionName);
-  if (!feature) return null;
-  const [w, s, e, n] = turf.bbox(feature);
-  return L.latLngBounds([s, w], [n, e]).pad(pad);
-}
-
-function getCityStoreFeatures(cityName, regionName = null, brandFilter = null) {
-  if (!cityName || !state.locationsGeojson?.features) return [];
-  const target = cityName.trim().toLowerCase();
-  const brandSet = brandFilter ? new Set(brandFilter) : null;
-  return state.locationsGeojson.features.filter(f => {
-    const p = f.properties || {};
-    const city = (p.city || "").trim().toLowerCase();
-    if (city !== target) return false;
-    if (regionName && p.region !== regionName) return false;
-    if (brandSet && !brandSet.has(p.brand)) return false;
-    return true;
-  });
-}
-
-function getBoundsForPointFeatures(features, pad = 0.18) {
-  if (!features?.length) return null;
-  const lats = [];
-  const lons = [];
-  features.forEach(f => {
-    const coords = f.geometry?.coordinates;
-    if (!coords || coords.length < 2) return;
-    lons.push(Number(coords[0]));
-    lats.push(Number(coords[1]));
-  });
-  if (!lats.length || !lons.length) return null;
-  let bounds = L.latLngBounds([
-    [Math.min(...lats), Math.min(...lons)],
-    [Math.max(...lats), Math.max(...lons)]
-  ]);
-  const sameLat = Math.abs(bounds.getNorth() - bounds.getSouth()) < 0.01;
-  const sameLon = Math.abs(bounds.getEast() - bounds.getWest()) < 0.01;
-  if (sameLat || sameLon) bounds = bounds.pad(1.2);
-  return bounds.pad(pad);
-}
-
-function getScopeBounds(pad = 0.12) {
-  if (state.selectedCity) {
-    const cityFeatures = getCityStoreFeatures(state.selectedCity, state.selectedRegion || null);
-    const cityBounds = getBoundsForPointFeatures(cityFeatures, Math.max(0.18, pad));
-    if (cityBounds) return cityBounds;
-    if (state.map) return state.map.getBounds().pad(Math.max(0.15, pad));
-  }
-  if (state.selectedRegion) {
-    return getRegionBounds(state.selectedRegion, Math.max(0.08, pad));
-  }
-  const englandBounds = getEnglandBounds();
-  return englandBounds ? englandBounds.pad(Math.max(0.06, pad)) : state.map.getBounds().pad(pad);
+  return rg.grid[key] || null;
 }
 
 // Fast population estimate using cached region lookup (no turf calls per hex)
@@ -1119,7 +1053,7 @@ function getNearbyStoresForHex(cx, cy, searchRadiusKm, brandFilter, regionFilter
 function computeLSOACoverageForBrand(brand, bounds, regionFilter = null) {
   const lsoas = getLSOAsInBounds(bounds, regionFilter);
   const brandFilter = new Set([brand]);
-  const maxSearchRadiusKm = getCoverageSearchRadiusKm(1.5);
+  const maxSearchRadiusKm = 9;
 
   return lsoas.map(f => {
     const cx = f.properties._cx;
@@ -1174,13 +1108,12 @@ function computeCoverageFromNearbyStores(cx, cy, estPop, areaKm2, nearbyStores) 
 
   const popDensity = estPop / areaKm2;
   const center = turf.point([cx, cy]);
+  const cellRadiusKm = Math.sqrt(areaKm2 / Math.PI);
 
   let rawScore = 0;
   let weightedRadiusNumerator = 0;
   let weightedStoreCount = 0;
   const brandCounts = {};
-
-  const cellInfluenceKm = Math.max(0.35, Math.sqrt(areaKm2 / Math.PI) * 0.9);
 
   nearbyStores.forEach(store => {
     const brand = store.properties.brand;
@@ -1189,11 +1122,11 @@ function computeCoverageFromNearbyStores(cx, cy, estPop, areaKm2, nearbyStores) 
     const brandWeight = profile.weight || 1.0;
 
     const d = turf.distance(center, turf.point(store.geometry.coordinates), { units: "kilometers" });
-    const effectiveDistance = Math.max(0, d - cellInfluenceKm);
-    if (effectiveDistance > radiusKm) return;
+    const effectiveDistanceKm = Math.max(0, d - cellRadiusKm * 0.9);
+    if (effectiveDistanceKm > radiusKm) return;
 
-    const distanceWeight = Math.pow(Math.max(0, 1 - effectiveDistance / radiusKm), 1.2);
-    const urbanCompression = popDensity >= 3000 ? 0.86 : popDensity >= 800 ? 0.95 : 1.03;
+    const distanceWeight = Math.pow(Math.max(0, 1 - effectiveDistanceKm / Math.max(0.25, radiusKm)), 1.1);
+    const urbanCompression = popDensity >= 3000 ? 0.88 : popDensity >= 800 ? 0.96 : 1.04;
     const contribution = distanceWeight * brandWeight * urbanCompression;
 
     rawScore += contribution;
@@ -1202,7 +1135,7 @@ function computeCoverageFromNearbyStores(cx, cy, estPop, areaKm2, nearbyStores) 
     brandCounts[brand] = (brandCounts[brand] || 0) + 1;
   });
 
-  const coveragePct = Math.max(0, Math.min(1, 1 - Math.exp(-rawScore * 0.46)));
+  const coveragePct = Math.max(0, Math.min(1, 1 - Math.exp(-rawScore * 0.52)));
   const overlapIndex = Math.max(0, rawScore - 1.0);
   const sharedPct = Math.max(0, Math.min(1, overlapIndex / Math.max(1, rawScore + 0.3)));
   const exclusivePct = Math.max(0, coveragePct * (1 - sharedPct));
@@ -1224,155 +1157,38 @@ function computeCoverageFromNearbyStores(cx, cy, estPop, areaKm2, nearbyStores) 
   };
 }
 
-function assignPointsToHexesByAccessor(hexGrid, features, getPoint) {
-  const wrapped = (features || []).map(f => {
-    const point = getPoint(f);
-    if (!point) return null;
+function buildBrandCoverageFeatures(brand, bounds, cellSize) {
+  if (isLSOAReady() && (state.selectedRegion || (state.map && state.map.getZoom() >= 9))) {
+    const features = computeLSOACoverageForBrand(brand, bounds, state.selectedRegion || null);
     return {
-      type: "Feature",
-      geometry: { type: "Point", coordinates: point },
-      properties: { __source: f }
-    };
-  }).filter(Boolean);
-
-  const bins = binPointsToHexes(hexGrid, wrapped);
-  return bins.map(bucket => bucket.map(item => item.properties.__source));
-}
-
-function estimateHexPopulationDensity(hexGrid, regionFilter = null) {
-  if (state._lsoaIndex) {
-    const lsoas = getLSOAsInBounds(getScopeBounds(0.12), regionFilter);
-    if (lsoas.length) {
-      const lsoaBins = assignPointsToHexesByAccessor(hexGrid, lsoas, f => [f.properties._cx, f.properties._cy]);
-      return lsoaBins.map((bucket, idx) => {
-        let pop = 0;
-        let area = 0;
-        bucket.forEach(f => {
-          pop += getLSOAPopulation(f);
-          area += getLSOAAreaKm2(f);
-        });
-        const hexAreaKm2 = turf.area(hexGrid.features[idx]) / 1e6;
-        const effectiveArea = area > 0 ? area : hexAreaKm2;
-        return {
-          estPop: pop,
-          areaKm2: hexAreaKm2,
-          density: effectiveArea > 0 ? pop / effectiveArea : 0,
-          source: bucket.length ? "lsoa" : "fallback"
-        };
-      });
-    }
-  }
-
-  return hexGrid.features.map(hex => {
-    const [cx, cy] = getHexCentroid(hex);
-    const areaKm2 = turf.area(hex) / 1e6;
-    const regionName = regionFilter || fastRegionLookup(cx, cy);
-    const regionArea = getRegionArea(regionName) || areaKm2 || 1;
-    const regionPop = getRegionPopulation(regionName) || fastEstimatePopulation(areaKm2, cx, cy);
-    const density = regionArea > 0 ? regionPop / regionArea : 0;
-    return {
-      estPop: Math.max(0, density * areaKm2),
-      areaKm2,
-      density,
-      source: "region"
-    };
-  });
-}
-
-function computeSimpleCoverageForHex(cx, cy, estPop, areaKm2, density, stores) {
-  if (!stores?.length) {
-    return {
-      coveragePct: 0,
-      coveredPop: 0,
-      coveredAreaKm2: 0,
-      overlapIndex: 0,
-      weightedRadiusKm: 0,
-      contributingStores: 0,
-      rawScore: 0,
-      brandCounts: {}
+      features,
+      featureMode: "lsoa"
     };
   }
 
-  const center = turf.point([cx, cy]);
-  const brandCounts = {};
-  let score = 0;
-  let overlap = 0;
-  let weightedRadius = 0;
-  let contributing = 0;
-
-  stores.forEach(store => {
-    const brand = store.properties?.brand;
-    const radiusKm = getRadiusForBrand(brand, density || (areaKm2 > 0 ? estPop / areaKm2 : 0));
-    const limitKm = radiusKm * 1.15;
-    const d = turf.distance(center, turf.point(store.geometry.coordinates), { units: "kilometers" });
-    if (d > limitKm) return;
-
-    const normalized = Math.max(0, 1 - d / Math.max(0.25, radiusKm));
-    if (normalized <= 0) return;
-
-    const profile = DELIVERY_PROFILE[brand] || { weight: 1 };
-    const contribution = Math.pow(normalized, 1.6) * (profile.weight || 1);
-    score += contribution;
-    overlap += Math.max(0, contribution - 0.65);
-    weightedRadius += radiusKm;
-    contributing += 1;
-    brandCounts[brand] = (brandCounts[brand] || 0) + 1;
-  });
-
-  const coveragePct = Math.max(0, Math.min(1, 1 - Math.exp(-score * 1.15)));
-  return {
-    coveragePct,
-    coveredPop: coveragePct * estPop,
-    coveredAreaKm2: coveragePct * areaKm2,
-    overlapIndex: overlap,
-    weightedRadiusKm: contributing ? weightedRadius / contributing : 0,
-    contributingStores: contributing,
-    rawScore: score,
-    brandCounts
-  };
-}
-
-function buildSimpleCoverageFeatures(brands, bounds, cellSize) {
   const bbox = [bounds.getWest(), bounds.getSouth(), bounds.getEast(), bounds.getNorth()];
   const hexGrid = turf.hexGrid(bbox, cellSize, { units: "kilometers" });
-  const regionFilter = state.selectedRegion || null;
-  const storeSet = new Set(brands);
+  const hexAreaKm2 = hexGrid.features.length > 0 ? turf.area(hexGrid.features[0]) / 1e6 : 1;
 
-  let storeFeatures;
-  if (state.selectedCity) {
-    storeFeatures = getCityStoreFeatures(state.selectedCity, regionFilter, storeSet);
-  } else {
-    storeFeatures = getPointsInBounds(bounds, storeSet, regionFilter);
-  }
+  const brandFilter = new Set([brand]);
+  const maxSearchRadiusKm = Math.max(8, cellSize * 2.4);
 
-  const popData = estimateHexPopulationDensity(hexGrid, regionFilter);
-  const storeBins = assignPointsToHexesByAccessor(hexGrid, storeFeatures, f => f.geometry.coordinates);
-  const maxRadiusKm = Math.max(...brands.map(b => DELIVERY_PROFILE[b]?.ruralKm || DELIVERY_PROFILE[b]?.baseKm || 4.2), 4.2) * 1.2;
-
-  hexGrid.features.forEach((hex, idx) => {
+  hexGrid.features.forEach(hex => {
     const [cx, cy] = getHexCentroid(hex);
-    const popInfo = popData[idx] || { estPop: 0, areaKm2: turf.area(hex) / 1e6, density: 0, source: "fallback" };
-    const localStores = storeBins[idx] || [];
-    const nearbyStores = localStores.length
-      ? localStores.concat(getNearbyStoresForHex(cx, cy, maxRadiusKm, storeSet, regionFilter))
-      : getNearbyStoresForHex(cx, cy, maxRadiusKm, storeSet, regionFilter);
-
-    const seen = new Set();
-    const dedupedStores = nearbyStores.filter(store => {
-      const p = store.properties || {};
-      const key = `${p.brand || ''}|${p.name || ''}|${store.geometry.coordinates.join(',')}`;
-      if (seen.has(key)) return false;
-      seen.add(key);
-      return true;
-    });
-
-    const coverage = computeSimpleCoverageForHex(cx, cy, popInfo.estPop, popInfo.areaKm2, popInfo.density, dedupedStores);
-
+    hex._cx = cx;
+    hex._cy = cy;
     hex.properties._cx = cx;
     hex.properties._cy = cy;
-    hex.properties.estPop = popInfo.estPop || 0;
-    hex.properties.areaKm2 = popInfo.areaKm2 || 0;
-    hex.properties.popDensity = popInfo.density || 0;
+    hex.properties.brand = brand;
+
+    const estPop = fastEstimatePopulation(hexAreaKm2, cx, cy);
+    const nearbyStores = getNearbyStoresForHex(cx, cy, maxSearchRadiusKm, brandFilter, null);
+    const coverage = computeCoverageFromNearbyStores(cx, cy, estPop, hexAreaKm2, nearbyStores);
+    const regionName = fastRegionLookup(cx, cy);
+    const threshold = getBrandCoverageThreshold(brand);
+
+    hex.properties.estPop = estPop;
+    hex.properties.areaKm2 = hexAreaKm2;
     hex.properties.coveragePct = coverage.coveragePct || 0;
     hex.properties.coveredPop = coverage.coveredPop || 0;
     hex.properties.coveredAreaKm2 = coverage.coveredAreaKm2 || 0;
@@ -1381,15 +1197,19 @@ function buildSimpleCoverageFeatures(brands, bounds, cellSize) {
     hex.properties.contributingStores = coverage.contributingStores || 0;
     hex.properties.rawScore = coverage.rawScore || 0;
     hex.properties.brandCounts = coverage.brandCounts || {};
-    hex.properties.confidence = Math.min(1, 0.25 + (coverage.contributingStores || 0) * 0.18 + (popInfo.source === "lsoa" ? 0.25 : 0.1));
-    hex.properties.isCovered = (coverage.coveragePct || 0) >= 0.16;
+    hex.properties.confidence = getCoverageConfidence(
+      coverage.contributingStores || 0,
+      estPop,
+      regionName
+    );
+    hex.properties.isCovered = (coverage.coveragePct || 0) >= threshold;
+    hex.properties.threshold = threshold;
   });
 
-  return { features: hexGrid.features, featureMode: "hex" };
-}
-
-function buildBrandCoverageFeatures(brand, bounds, cellSize) {
-  return buildSimpleCoverageFeatures([brand], bounds, cellSize);
+  return {
+    features: hexGrid.features,
+    featureMode: "hex"
+  };
 }
 
 function classifyCoverageState(baseCovered, compareCovered) {
@@ -1511,157 +1331,324 @@ function buildHexLayer() {
   }
   if (!state.map || state.country !== "england") return;
 
-  if (state.compareHexLayer) {
+  const t0 = performance.now();
+  const zoom = state.map.getZoom();
+  const cellSize = cellSizeForZoom(zoom);
+  const selected = selectedArr();
+  const activeBrands = getActiveMapBrands();
+  const isHeatmap = state.heatmapMode && state.primaryBrand;
+
+  if (isHeatmap && state.compareHexLayer) {
     state.compareHexLayer.remove();
     state.compareHexLayer = null;
   }
 
-  const selected = selectedArr();
-  const activeBrands = getActiveMapBrands();
-  const bounds = getScopeBounds(0.12);
-  const cellSize = cellSizeForZoom(state.map.getZoom());
-  const isHeatmap = state.heatmapMode && state.primaryBrand;
+  const countryView = !state.selectedRegion && !state.selectedCity && zoom <= 8.5;
+  const regionView = !!state.selectedRegion && !state.selectedCity;
+  let bounds = state.map.getBounds().pad(0.15);
+  if (countryView) bounds = getEnglandBounds() || bounds;
+  else if (regionView) {
+    const regionFeature = (state.regionsGeojson?.features || []).find(f => (f.properties.name || f.properties.rgn24nm) === state.selectedRegion);
+    if (regionFeature) {
+      const b = turf.bbox(regionFeature);
+      bounds = L.latLngBounds([[b[1], b[0]], [b[3], b[2]]]).pad(0.08);
+    }
+  }
+  const bbox = [bounds.getWest(), bounds.getSouth(), bounds.getEast(), bounds.getNorth()];
+  const brandFilter = new Set(activeBrands);
+  const locations = getPointsInBounds(bounds, brandFilter, null);
 
   if (isHeatmap) {
-    const { features } = buildSimpleCoverageFeatures(activeBrands, bounds, cellSize);
-    features.forEach(f => {
-      const counts = f.properties.brandCounts || {};
-      const primary = counts[state.primaryBrand] || 0;
-      const competitor = Object.entries(counts).reduce((sum, [brand, value]) => brand === state.primaryBrand ? sum : sum + value, 0);
-      f.properties.primary = primary;
-      f.properties.competitor = competitor;
-      f.properties.total = primary + competitor;
-      f.properties.ratio = (primary + competitor) > 0 ? primary / (primary + competitor) : NaN;
+    const hexGrid = turf.hexGrid(bbox, cellSize, { units: "kilometers" });
+    const hexAreaKm2 = hexGrid.features.length > 0 ? turf.area(hexGrid.features[0]) / 1e6 : 1;
+    const hexPoints = binPointsToHexes(hexGrid, locations);
+
+    const competitors = state.compareMode === "all"
+      ? state.metrics.brands.filter(b => b !== state.primaryBrand)
+      : (state.secondaryBrand ? [state.secondaryBrand] : []);
+
+    hexGrid.features.forEach((hex, i) => {
+      const pts = hexPoints[i] || [];
+      let primary = 0;
+      let comp = 0;
+      const [cx, cy] = getHexCentroid(hex);
+      hex.properties._cx = cx;
+      hex.properties._cy = cy;
+
+      pts.forEach(f => {
+        if (f.properties.brand === state.primaryBrand) primary++;
+        else if (competitors.includes(f.properties.brand)) comp++;
+      });
+
+      const unlocW = fastEstimateUnlocated(hexAreaKm2, cx, cy, brandFilter);
+      const unlocPrimary = fastEstimateUnlocated(hexAreaKm2, cx, cy, new Set([state.primaryBrand]));
+      hex.properties.primary = primary;
+      hex.properties.competitor = comp;
+      hex.properties.total = primary + comp;
+      hex.properties.unlocated = unlocW;
+      hex.properties.adjustedTotal = primary + comp + unlocW;
+      hex.properties.ratio = (primary + comp + unlocW) > 0
+        ? (primary + unlocPrimary) / (primary + comp + unlocW)
+        : NaN;
+      hex.properties.estPop = fastEstimatePopulation(hexAreaKm2, cx, cy);
     });
 
-    state.hexLayer = L.geoJSON({ type: "FeatureCollection", features }, {
-      style: f => {
-        const p = f.properties || {};
-        if (!p.total) {
+    state._hexMaxPop = Math.max(1, ...hexGrid.features.map(h => h.properties.estPop || 0));
+
+    state.hexLayer = L.geoJSON(
+      { type: "FeatureCollection", features: hexGrid.features },
+      {
+        style: f => {
+          if (state.selectedRegion && !isHexInSelectedRegion(f)) {
+            return {
+              fillColor: "transparent",
+              fillOpacity: 0,
+              color: "transparent",
+              weight: 0,
+              opacity: 0
+            };
+          }
+
+          const p = f.properties;
+          const maxPop = state._hexMaxPop || 1;
+
+          if (p.total === 0) {
+            const pop = p.estPop || 0;
+            const t = maxPop > 0 ? Math.min(1, pop / maxPop) : 0;
+            return {
+              fillColor: `hsla(40,${20 + 30 * t}%,${94 - 12 * t}%,${0.08 + 0.2 * t})`,
+              fillOpacity: 1,
+              weight: 1,
+              color: `rgba(180,140,60,${0.06 + 0.15 * t})`,
+              opacity: 1
+            };
+          }
+
           return {
-            fillColor: COMPARE_LAYER_STYLE.noCoverageFill,
+            fillColor: hexFillHeatmap(p.ratio),
             fillOpacity: 1,
-            weight: 0.5,
-            color: COMPARE_LAYER_STYLE.noCoverageStroke,
+            weight: 1,
+            color: hexStrokeHeatmap(p.ratio),
             opacity: 1
           };
         }
-        return {
-          fillColor: hexFillHeatmap(p.ratio),
-          fillOpacity: 1,
-          weight: 0.5,
-          color: hexStrokeHeatmap(p.ratio),
-          opacity: 1
-        };
       }
-    }).addTo(state.map);
+    ).addTo(state.map);
+    if (state.regionsLayer) state.regionsLayer.bringToFront();
+
   } else {
+    let maxValue = 0;
+    let maxPop = 0;
     const baseBrand = selected.length === 1 ? selected[0] : null;
     state.baseBrand = baseBrand;
 
-    let features;
     if (baseBrand) {
-      ({ features } = buildBrandCoverageFeatures(baseBrand, bounds, cellSize));
+      const { features: baseFeatures, featureMode } = buildBrandCoverageFeatures(baseBrand, bounds, cellSize);
+
+      baseFeatures.forEach(f => {
+        if (state.coverageView === "coverage") {
+          f.properties.displayValue = (f.properties.coveragePct || 0) * 100;
+        } else if (state.coverageView === "covered_pop") {
+          f.properties.displayValue = f.properties.coveredPop || 0;
+        } else if (state.coverageView === "overlap") {
+          f.properties.displayValue = f.properties.overlapIndex || 0;
+        } else {
+          f.properties.displayValue = (f.properties.coveragePct || 0) * 100;
+        }
+
+        if (f.properties.displayValue > maxValue) maxValue = f.properties.displayValue;
+        if ((f.properties.estPop || 0) > maxPop) maxPop = f.properties.estPop;
+      });
+
+      state.hexLayer = L.geoJSON(
+        { type: "FeatureCollection", features: baseFeatures },
+        {
+          style: f => {
+            if (state.selectedRegion && !isHexInSelectedRegion(f)) {
+              return {
+                fillColor: "transparent",
+                fillOpacity: 0,
+                color: "transparent",
+                weight: 0,
+                opacity: 0
+              };
+            }
+
+            const covered = !!f.properties.isCovered;
+            const fill = covered
+              ? hexFillCoverageMode(
+                  f.properties.displayValue,
+                  maxValue,
+                  state.coverageView,
+                  f.properties.estPop,
+                  maxPop
+                )
+              : COMPARE_LAYER_STYLE.noCoverageFill;
+
+            const borderlessCovered = featureMode === "lsoa" || (f.properties.coveragePct || 0) > 0.10;
+
+            return {
+              fillColor: fill,
+              fillOpacity: 1,
+              weight: borderlessCovered ? 0 : 0.6,
+              color: borderlessCovered ? "transparent" : COMPARE_LAYER_STYLE.noCoverageStroke,
+              opacity: 1
+            };
+          },
+          onEachFeature: (feature, layer) => {
+            const p = feature.properties;
+            const pop = p.estPop || 0;
+            const popK = pop > 1000 ? (pop / 1000).toFixed(1) + "k" : pop;
+            const coveredPopText = p.coveredPop ? fmtInt(Math.round(p.coveredPop)) : "—";
+            const coverageText = p.coveragePct != null ? fmtPct(p.coveragePct) : "—";
+            const overlapText = p.overlapIndex != null ? p.overlapIndex.toFixed(2) : "—";
+            const radiusText = p.weightedRadiusKm ? `${p.weightedRadiusKm.toFixed(1)} km` : "—";
+            const confidenceText = p.confidence >= 0.75 ? "High" : p.confidence >= 0.45 ? "Medium" : "Low";
+
+            layer.bindTooltip(
+              `${baseBrand}<br>` +
+              `Pop: ~${popK}<br>` +
+              `Coverage: ${coverageText}<br>` +
+              `Covered pop: ~${coveredPopText}<br>` +
+              `Overlap: ${overlapText}<br>` +
+              `Stores contributing: ${fmtInt(p.contributingStores || 0)}<br>` +
+              `Avg radius: ${radiusText}<br>` +
+              `Confidence: ${confidenceText}`,
+              { sticky: true }
+            );
+          }
+        }
+      ).addTo(state.map);
+      if (state.regionsLayer) state.regionsLayer.bringToFront();
+
+      if (isCoverageCompareMode() && state.compareBrand !== baseBrand) {
+        buildCompareHexLayer(baseFeatures, state.compareBrand, bounds, cellSize);
+      } else if (state.compareHexLayer) {
+        state.compareHexLayer.remove();
+        state.compareHexLayer = null;
+      }
+
     } else {
-      ({ features } = buildSimpleCoverageFeatures(activeBrands, bounds, cellSize));
-    }
+      const hexGrid = turf.hexGrid(bbox, cellSize, { units: "kilometers" });
+      const hexAreaKm2 = hexGrid.features.length > 0 ? turf.area(hexGrid.features[0]) / 1e6 : 1;
+      const maxSearchRadiusKm = Math.max(8, cellSize * 2.4);
 
-    let maxValue = 0;
-    let maxPop = 0;
-    features.forEach(f => {
-      if (state.coverageView === "covered_pop") {
-        f.properties.displayValue = f.properties.coveredPop || 0;
-      } else if (state.coverageView === "overlap") {
-        f.properties.displayValue = f.properties.overlapIndex || 0;
-      } else {
-        f.properties.displayValue = (f.properties.coveragePct || 0) * 100;
+      hexGrid.features.forEach(hex => {
+        const [cx, cy] = getHexCentroid(hex);
+        hex.properties._cx = cx;
+        hex.properties._cy = cy;
+        hex.properties.estPop = fastEstimatePopulation(hexAreaKm2, cx, cy);
+        const nearbyStores = getNearbyStoresForHex(cx, cy, maxSearchRadiusKm, brandFilter, null);
+        const coverage = computeCoverageFromNearbyStores(cx, cy, hex.properties.estPop, hexAreaKm2, nearbyStores);
+
+        hex.properties.coveragePct = coverage.coveragePct || 0;
+        hex.properties.coveredPop = coverage.coveredPop || 0;
+        hex.properties.overlapIndex = coverage.overlapIndex || 0;
+        hex.properties.contributingStores = coverage.contributingStores || 0;
+        hex.properties.coveredAreaKm2 = coverage.coveredAreaKm2 || 0;
+        hex.properties.isCovered = (coverage.coveragePct || 0) >= state.coverageThreshold;
+
+        if (state.coverageView === "coverage") {
+          hex.properties.displayValue = (coverage.coveragePct || 0) * 100;
+        } else if (state.coverageView === "covered_pop") {
+          hex.properties.displayValue = coverage.coveredPop || 0;
+        } else if (state.coverageView === "overlap") {
+          hex.properties.displayValue = coverage.overlapIndex || 0;
+        } else {
+          hex.properties.displayValue = (coverage.coveragePct || 0) * 100;
+        }
+
+        if (hex.properties.displayValue > maxValue) maxValue = hex.properties.displayValue;
+        if ((hex.properties.estPop || 0) > maxPop) maxPop = hex.properties.estPop;
+      });
+
+      state.hexLayer = L.geoJSON(
+        { type: "FeatureCollection", features: hexGrid.features },
+        {
+          style: f => {
+            if (state.selectedRegion && !isHexInSelectedRegion(f)) {
+              return {
+                fillColor: "transparent",
+                fillOpacity: 0,
+                color: "transparent",
+                weight: 0,
+                opacity: 0
+              };
+            }
+
+            const borderlessCovered = (f.properties.coveragePct || 0) > 0.10;
+            return {
+              fillColor: hexFillCoverageMode(
+                f.properties.displayValue,
+                maxValue,
+                state.coverageView,
+                f.properties.estPop,
+                maxPop
+              ),
+              fillOpacity: 1,
+              weight: borderlessCovered ? 0 : 0.6,
+              color: borderlessCovered ? "transparent" : COMPARE_LAYER_STYLE.noCoverageStroke,
+              opacity: 1
+            };
+          }
+        }
+      ).addTo(state.map);
+      if (state.regionsLayer) state.regionsLayer.bringToFront();
+
+      if (state.compareHexLayer) {
+        state.compareHexLayer.remove();
+        state.compareHexLayer = null;
       }
-      maxValue = Math.max(maxValue, f.properties.displayValue || 0);
-      maxPop = Math.max(maxPop, f.properties.estPop || 0);
-    });
-
-    state.hexLayer = L.geoJSON({ type: "FeatureCollection", features }, {
-      style: f => {
-        const p = f.properties || {};
-        const covered = !!p.isCovered;
-        return {
-          fillColor: covered ? hexFillCoverageMode(p.displayValue, maxValue, state.coverageView, p.estPop, maxPop) : COMPARE_LAYER_STYLE.noCoverageFill,
-          fillOpacity: 1,
-          weight: covered ? 0.5 : 0.7,
-          color: covered ? "rgba(255,255,255,0.22)" : COMPARE_LAYER_STYLE.noCoverageStroke,
-          opacity: 1
-        };
-      },
-      onEachFeature: (feature, layer) => {
-        const p = feature.properties || {};
-        layer.bindTooltip(
-          `${baseBrand || activeBrands.join(", ")}<br>` +
-          `Estimated pop: ${fmtInt(Math.round(p.estPop || 0))}<br>` +
-          `Density: ${fmtInt(Math.round(p.popDensity || 0))} / km²<br>` +
-          `Coverage: ${fmtPct(p.coveragePct || 0)}<br>` +
-          `Covered pop: ${fmtInt(Math.round(p.coveredPop || 0))}<br>` +
-          `Stores contributing: ${fmtInt(p.contributingStores || 0)}<br>` +
-          `Estimated radius: ${(p.weightedRadiusKm || 0).toFixed(1)} km`,
-          { sticky: true }
-        );
-      }
-    }).addTo(state.map);
-
-    if (isCoverageCompareMode() && state.compareBrand && state.compareBrand !== baseBrand) {
-      buildCompareHexLayer(features, state.compareBrand, bounds, cellSize);
     }
   }
 
-  if (state.locationsLayer) state.locationsLayer.bringToFront();
   if (state.regionsLayer) state.regionsLayer.bringToFront();
+  if (state.locationsLayer) state.locationsLayer.bringToFront();
   updateLegend();
+  console.log(`⚡ Coverage layer built in ${(performance.now() - t0).toFixed(0)}ms (${locations.length} points)`);
 }
 
 function updateLegend() {
   const title = document.getElementById("legendTitle");
   const scale = document.getElementById("legendScale");
-  if (!title || !scale) return;
 
   if (isCoverageCompareMode()) {
     title.textContent = `${selectedArr()[0]} vs ${state.compareBrand}`;
     scale.innerHTML = `
-      <span class="legend-block" style="background:${COMPARE_LAYER_STYLE.noCoverageFill}"></span><span>No coverage</span>
-      <span class="legend-block" style="background:${COMPARE_LAYER_STYLE.compareOnlyFill}"></span><span>${state.compareBrand} only</span>
+      <span class="legend-block" style="background:${COMPARE_LAYER_STYLE.compareOnlyFill}"></span><span>Compare only</span>
       <span class="legend-block" style="background:${COMPARE_LAYER_STYLE.sharedFill}"></span><span>Shared</span>
       <span class="legend-block" style="background:hsla(230,85%,92%,0.5)"></span>
       <span class="legend-block" style="background:hsla(230,85%,80%,0.6)"></span>
       <span class="legend-block" style="background:hsla(230,88%,68%,0.7)"></span>
       <span class="legend-block" style="background:hsla(230,90%,56%,0.75)"></span>
-      <span class="legend-block" style="background:hsla(230,95%,38%,0.85)"></span><span>${selectedArr()[0]} strength</span>
+      <span class="legend-block" style="background:hsla(230,95%,38%,0.85)"></span><span>Base coverage</span>
     `;
     return;
   }
 
   if (state.heatmapMode) {
-    title.textContent = `${state.primaryBrand} share by cell`;
+    title.textContent = `${state.primaryBrand} vs competitors`;
     scale.innerHTML = `
-      <span class="legend-block" style="background:#E53935"></span><span>Competitor-led</span>
+      <span class="legend-block" style="background:#E53935"></span>
       <span class="legend-block" style="background:#FF9800"></span>
-      <span class="legend-block" style="background:#FFEB3B"></span><span>Balanced</span>
+      <span class="legend-block" style="background:#FFEB3B"></span>
       <span class="legend-block" style="background:#8BC34A"></span>
-      <span class="legend-block" style="background:#4CAF50"></span><span>${state.primaryBrand} led</span>
+      <span class="legend-block" style="background:#4CAF50"></span>
     `;
     return;
   }
 
-  title.textContent = state.coverageView === "covered_pop"
-    ? "Estimated covered population"
-    : state.coverageView === "overlap"
-      ? "Coverage overlap"
-      : "Estimated coverage";
+  if (state.coverageView === "coverage") title.textContent = isLSOAReady() ? "LSOA coverage %" : "Coverage %";
+  else if (state.coverageView === "covered_pop") title.textContent = isLSOAReady() ? "LSOA covered population" : "Covered population";
+  else if (state.coverageView === "overlap") title.textContent = "Overlap";
+  else title.textContent = "Coverage %";
 
   scale.innerHTML = `
-    <span class="legend-block" style="background:${COMPARE_LAYER_STYLE.noCoverageFill}"></span><span>No coverage</span>
     <span class="legend-block" style="background:hsla(230,85%,92%,0.5)"></span>
     <span class="legend-block" style="background:hsla(230,85%,80%,0.6)"></span>
     <span class="legend-block" style="background:hsla(230,88%,68%,0.7)"></span>
     <span class="legend-block" style="background:hsla(230,90%,56%,0.75)"></span>
-    <span class="legend-block" style="background:hsla(230,95%,38%,0.85)"></span><span>Higher coverage</span>
+    <span class="legend-block" style="background:hsla(230,95%,38%,0.85)"></span>
   `;
 }
 
@@ -1671,25 +1658,44 @@ function rebuildLocationsLayer() {
     state.locationsLayer.remove();
     state.locationsLayer = null;
   }
-  if (state.country !== "england" || !state.map) return;
+  if (state.country !== "england") return;
 
   const activeBrands = getActiveMapBrands();
   const brandSet = new Set(activeBrands);
-  const regionFilter = state.selectedRegion || null;
+  const cityFilter = state.selectedCity;
+  const effectiveRegionFilter = state.selectedRegion || null;
   const zoom = state.map.getZoom();
 
   let feats;
-  if (state.selectedCity) {
-    feats = getCityStoreFeatures(state.selectedCity, regionFilter, brandSet);
+  if (!effectiveRegionFilter && !cityFilter) {
+    feats = getPointsInBounds(state.map.getBounds().pad(0.2), brandSet, null);
+  } else if (zoom >= 11 && !effectiveRegionFilter) {
+    feats = getPointsInBounds(state.map.getBounds().pad(0.05), brandSet, null);
   } else {
-    feats = getPointsInBounds(getScopeBounds(0.12), brandSet, regionFilter);
+    feats = getPointsInBounds(
+      effectiveRegionFilter ? state.map.getBounds().pad(0.1) : state.map.getBounds().pad(0.08),
+      brandSet,
+      effectiveRegionFilter
+    );
+
+    if (cityFilter) {
+      const cityFeats = feats.filter(
+        f => (f.properties.city || "").trim().toLowerCase() === cityFilter.toLowerCase()
+      );
+      if (cityFeats.length >= 1) feats = cityFeats;
+    }
   }
 
-  if (!feats.length) return;
+  // Always show some locations on national view
+  if (feats.length === 0) return;
 
-  const dotRadius = zoom >= 13 ? 6 : zoom >= 11 ? 4.5 : zoom >= 9 ? 3 : 2;
-  const dotWeight = zoom >= 11 ? 1.2 : 0.6;
+  const maxMarkers = zoom < 9 ? 6000 : zoom < 11 ? 8000 : 5000;
+  const displayFeats = feats.length > maxMarkers ? feats.slice(0, maxMarkers) : feats;
 
+  const dotRadius = zoom >= 13 ? 6 : zoom >= 11 ? 4 : zoom >= 9 ? 2.5 : 1.5;
+  const dotWeight = zoom >= 11 ? 1.5 : 0.5;
+
+  // Use Canvas renderer for much better performance with thousands of markers
   if (!state._canvasRenderer) {
     state._canvasRenderer = L.canvas({ padding: 0.5 });
   }
@@ -1698,28 +1704,37 @@ function rebuildLocationsLayer() {
   const baseBrand = selected.length === 1 ? selected[0] : null;
   const compareBrand = isCoverageCompareMode() ? state.compareBrand : null;
 
-  state.locationsLayer = L.geoJSON({ type: "FeatureCollection", features: feats }, {
-    renderer: state._canvasRenderer,
-    pointToLayer: (feature, latlng) => {
-      const brand = feature.properties.brand;
-      const isBase = baseBrand && brand === baseBrand;
-      const isCompare = compareBrand && brand === compareBrand;
-      return L.circleMarker(latlng, {
-        radius: dotRadius,
-        weight: dotWeight,
-        color: "#fff",
-        opacity: 0.95,
-        fillColor: BRAND_COLORS[brand] || "#3B5BFE",
-        fillOpacity: isBase || isCompare ? 0.95 : 0.82,
-        className: isBase ? "marker-base" : isCompare ? "marker-compare" : "marker-default"
-      });
-    },
-    onEachFeature: (feature, layer) => {
-      const p = feature.properties || {};
-      layer.bindPopup(`<strong>${p.brand}</strong><br/>${p.name || ""}<br/><span style="color:#6b7394">${p.city || ""} ${p.postcode || ""}</span>`);
-    }
-  }).addTo(state.map);
+  state.locationsLayer = L.geoJSON(
+    { type: "FeatureCollection", features: displayFeats },
+    {
+      renderer: state._canvasRenderer,
+      pointToLayer: (feature, latlng) => {
+        const brand = feature.properties.brand;
 
+        const isBase = baseBrand && brand === baseBrand;
+        const isCompare = compareBrand && brand === compareBrand;
+
+        return L.circleMarker(latlng, {
+          radius: dotRadius,
+          weight: dotWeight,
+          color: "#fff",
+          opacity: zoom >= 11 ? 1 : 0.6,
+          fillColor: BRAND_COLORS[brand] || "#3B5BFE",
+          fillOpacity: zoom >= 11 ? 0.9 : 0.75,
+          className:
+            isBase ? "marker-base" :
+            isCompare ? "marker-compare" :
+            "marker-default"
+        });
+      },
+      onEachFeature: (feature, layer) => {
+        const p = feature.properties;
+        layer.bindPopup(
+          `<strong>${p.brand}</strong><br/>${p.name || ""}<br/><span style="color:#6b7394">${p.city || ""} ${p.postcode || ""}</span>`
+        );
+      }
+    }
+  ).addTo(state.map);
   state.locationsLayer.bringToFront();
 }
 
@@ -1736,37 +1751,14 @@ function refreshBrandCounts() {
     const name = el.dataset.brand;
     if (!name) return;
     const countEl = el.querySelector(".brand-count");
-    if (countEl) countEl.textContent = fmtInt(state.metrics.brand_totals[name] || 0);
+    countEl.textContent = fmtInt(state.metrics.brand_totals[name] || 0);
   });
-}
-
-function buildCitySelect(region) {
-  const citySelect = document.getElementById("citySelect");
-  if (!citySelect) return;
-
-  const regionFilter = region || state.selectedRegion || null;
-  const selected = new Set(getActiveMapBrands());
-  const cities = new Set();
-
-  state.locationsGeojson.features.forEach(f => {
-    const p = f.properties || {};
-    if (regionFilter && p.region !== regionFilter) return;
-    if (!selected.has(p.brand)) return;
-    const city = (p.city || "").trim();
-    if (!city || city === "Unknown") return;
-    cities.add(city);
-  });
-
-  const items = Array.from(cities).sort((a, b) => a.localeCompare(b));
-  citySelect.innerHTML = `<option value="">All cities</option>${items.map(city => `<option value="${city}">${city}</option>`).join("")}`;
-  citySelect.value = state.selectedCity || "";
 }
 
 function refreshAll() {
   if (state.country !== "england") return;
   const selected = selectedArr();
   if (!state.heatmapMode && selected.length === 1 && state.coverageView === "overlap") {
-    // overlap is less useful for one-chain view; fall back to coverage
     state.coverageView = "coverage";
     const coverageViewSelect = document.getElementById("coverageViewSelect");
     if (coverageViewSelect) coverageViewSelect.value = "coverage";
@@ -1778,9 +1770,6 @@ function refreshAll() {
   renderGreatBritainSummary();
   renderRegionTable();
   refreshRegionPanel();
-  refreshRegionList();
-  refreshRegionalAnalytics();
-  refreshCompareTab();
 }
 
 function buildCityRowsForRegion(region) {
@@ -2054,7 +2043,7 @@ function updateCoverageSummaryCache() {
       const hexGrid = turf.hexGrid(bbox, cellSize, { units: "kilometers" });
       const hexAreaKm2 = hexGrid.features.length > 0 ? turf.area(hexGrid.features[0]) / 1e6 : 1;
       const brandFilter = new Set(activeBrands);
-      const maxSearchRadiusKm = getCoverageSearchRadiusKm(cellSize);
+      const maxSearchRadiusKm = 6;
 
       hexGrid.features.forEach(hex => {
         const [cx, cy] = getHexCentroid(hex);
@@ -2080,7 +2069,7 @@ function updateCoverageSummaryCache() {
     const hexGrid = turf.hexGrid(bbox, cellSize, { units: "kilometers" });
     const hexAreaKm2 = hexGrid.features.length > 0 ? turf.area(hexGrid.features[0]) / 1e6 : 1;
     const brandFilter = new Set(activeBrands);
-    const maxSearchRadiusKm = getCoverageSearchRadiusKm(cellSize);
+    const maxSearchRadiusKm = 6;
 
     hexGrid.features.forEach(hex => {
       const [cx, cy] = getHexCentroid(hex);
@@ -2126,23 +2115,15 @@ function refreshKPIs() {
     const advantage = baseOnly - compareOnly;
     const advantageLabel = advantage >= 0 ? `${selected[0]} advantage` : `${state.compareBrand} advantage`;
 
-    const kpiTotal = document.getElementById("kpiTotal");
-    const kpiRegions = document.getElementById("kpiRegions");
-    const kpiDense = document.getElementById("kpiDense");
-    const kpiLondonShare = document.getElementById("kpiLondonShare");
-    if (kpiTotal) kpiTotal.textContent = baseOnly ? fmtInt(Math.round(baseOnly)) : "—";
-    if (kpiRegions) kpiRegions.textContent = compareOnly ? fmtInt(Math.round(compareOnly)) : "—";
-    if (kpiDense) kpiDense.textContent = shared ? fmtInt(Math.round(shared)) : "—";
-    if (kpiLondonShare) kpiLondonShare.textContent = fmtInt(Math.round(Math.abs(advantage)));
+    document.getElementById("kpiTotal").textContent = baseOnly ? fmtInt(Math.round(baseOnly)) : "—";
+    document.getElementById("kpiRegions").textContent = compareOnly ? fmtInt(Math.round(compareOnly)) : "—";
+    document.getElementById("kpiDense").textContent = shared ? fmtInt(Math.round(shared)) : "—";
+    document.getElementById("kpiLondonShare").textContent = fmtInt(Math.round(Math.abs(advantage)));
 
-    const kpiTotalLabel = document.querySelector("#kpiTotal + .rp-kpi-label");
-    const kpiRegionsLabel = document.querySelector("#kpiRegions + .rp-kpi-label");
-    const kpiDenseLabel = document.querySelector("#kpiDense + .rp-kpi-label");
-    const kpiLondonLabel = document.querySelector("#kpiLondonShare + .rp-kpi-label");
-    if (kpiTotalLabel) kpiTotalLabel.textContent = "Base-only pop";
-    if (kpiRegionsLabel) kpiRegionsLabel.textContent = "Compare-only pop";
-    if (kpiDenseLabel) kpiDenseLabel.textContent = "Shared pop";
-    if (kpiLondonLabel) kpiLondonLabel.textContent = advantageLabel;
+    document.querySelector("#kpiTotal + .rp-kpi-label").textContent = "Base-only pop";
+    document.querySelector("#kpiRegions + .rp-kpi-label").textContent = "Compare-only pop";
+    document.querySelector("#kpiDense + .rp-kpi-label").textContent = "Shared pop";
+    document.querySelector("#kpiLondonShare + .rp-kpi-label").textContent = advantageLabel;
     return;
   }
 
@@ -2150,26 +2131,18 @@ function refreshKPIs() {
   const coveragePct = population > 0 ? (hexSummary.coveredPop / population) : 0;
   const efficiency = totalLocations > 0 ? (hexSummary.coveredPop / totalLocations) : null;
 
-  const kpiTotal = document.getElementById("kpiTotal");
-  const kpiRegions = document.getElementById("kpiRegions");
-  const kpiDense = document.getElementById("kpiDense");
-  const kpiLondonShare = document.getElementById("kpiLondonShare");
-  if (kpiTotal) kpiTotal.textContent = fmtInt(totalLocations);
-  if (kpiRegions) kpiRegions.textContent =
+  document.getElementById("kpiTotal").textContent = fmtInt(totalLocations);
+  document.getElementById("kpiRegions").textContent =
     hexSummary.coveredPop ? fmtInt(Math.round(hexSummary.coveredPop)) : "—";
-  if (kpiDense) kpiDense.textContent =
+  document.getElementById("kpiDense").textContent =
     coveragePct ? fmtPct(coveragePct) : "—";
-  if (kpiLondonShare) kpiLondonShare.textContent =
+  document.getElementById("kpiLondonShare").textContent =
     efficiency ? fmtInt(Math.round(efficiency)) : "—";
 
-  const kpiTotalLabel = document.querySelector("#kpiTotal + .rp-kpi-label");
-  const kpiRegionsLabel = document.querySelector("#kpiRegions + .rp-kpi-label");
-  const kpiDenseLabel = document.querySelector("#kpiDense + .rp-kpi-label");
-  const kpiLondonLabel = document.querySelector("#kpiLondonShare + .rp-kpi-label");
-  if (kpiTotalLabel) kpiTotalLabel.textContent = "Locations";
-  if (kpiRegionsLabel) kpiRegionsLabel.textContent = "Covered Population";
-  if (kpiDenseLabel) kpiDenseLabel.textContent = "Coverage %";
-  if (kpiLondonLabel) kpiLondonLabel.textContent = "Covered Pop / Location";
+  document.querySelector("#kpiTotal + .rp-kpi-label").textContent = "Locations";
+  document.querySelector("#kpiRegions + .rp-kpi-label").textContent = "Covered Population";
+  document.querySelector("#kpiDense + .rp-kpi-label").textContent = "Coverage %";
+  document.querySelector("#kpiLondonShare + .rp-kpi-label").textContent = "Covered Pop / Location";
 }
 
 function computeCoverageMetrics(total, areaKm2, population, diversity, densityPer1000, brandCounts = {}) {
@@ -2472,7 +2445,7 @@ function renderRegionTable() {
       state.selectedRegion = region;
       state.selectedCity = city;
       flyToCityOrData(city, region);
-      refreshAll();
+      rebuildLocationsLayer();
     };
   });
 }
@@ -2520,19 +2493,29 @@ function renderGreatBritainSummary() {
 function refreshRegionPanel() {
   const clearBtn = document.getElementById("clearRegion");
   const text = document.getElementById("selectedRegionText");
+  const regionEmpty = document.getElementById("regionEmpty");
+  const regionDetails = document.getElementById("regionDetails");
+  const regionTotal = document.getElementById("regionTotal");
+  const regionDensity = document.getElementById("regionDensity");
+  const regionTopBrand = document.getElementById("regionTopBrand");
+  const regionTopBrandHint = document.getElementById("regionTopBrandHint");
+  const regionBrandTable = document.getElementById("regionBrandTable");
+  const regionCityTable = document.getElementById("regionCityTable");
+
+  if (!text || !clearBtn || !regionEmpty || !regionDetails) return;
 
   if (!state.selectedRegion) {
     text.textContent = "Region Details";
     clearBtn.classList.add("hidden");
-    document.getElementById("regionEmpty").classList.remove("hidden");
-    document.getElementById("regionDetails").classList.add("hidden");
+    regionEmpty.classList.remove("hidden");
+    regionDetails.classList.add("hidden");
     return;
   }
 
   text.textContent = state.selectedRegion.replace(" (England)", "");
   clearBtn.classList.remove("hidden");
-  document.getElementById("regionEmpty").classList.add("hidden");
-  document.getElementById("regionDetails").classList.remove("hidden");
+  regionEmpty.classList.add("hidden");
+  regionDetails.classList.remove("hidden");
 
   const region = state.selectedRegion;
   const activeBrands = getActiveMapBrands();
@@ -2541,33 +2524,34 @@ function refreshRegionPanel() {
 
   let total = 0;
   activeBrands.forEach(b => total += (counts[b] || 0));
-  document.getElementById("regionTotal").textContent = fmtInt(total);
-  document.getElementById("regionDensity").textContent = (total / (area / 1000)).toFixed(1);
+  if (regionTotal) regionTotal.textContent = fmtInt(total);
+  if (regionDensity) regionDensity.textContent = (total / Math.max(1, area / 1000)).toFixed(1);
 
   let topBrand = null, topVal = -1;
   activeBrands.forEach(b => {
     const v = counts[b] || 0;
     if (v > topVal) { topVal = v; topBrand = b; }
   });
-  document.getElementById("regionTopBrand").textContent = topBrand || "—";
-  document.getElementById("regionTopBrandHint").textContent = total ? `${fmtPct(topVal / total)} share` : "Top Brand";
+  if (regionTopBrand) regionTopBrand.textContent = topBrand || "—";
+  if (regionTopBrandHint) regionTopBrandHint.textContent = total ? `${fmtPct(topVal / total)} share` : "Top Brand";
 
   const rows = activeBrands
     .map(b => ({ brand: b, count: counts[b] || 0 }))
     .sort((a, b) => b.count - a.count);
-  document.getElementById("regionBrandTable").innerHTML = `
-    <tr><th>Brand</th><th class="num">Count</th><th class="num">Share</th></tr>
-    ${rows.map(r => {
-      const share = total ? r.count / total : 0;
-      return `<tr>
-        <td><div class="brand-dot-cell"><span class="brand-dot" style="background:${BRAND_COLORS[r.brand]||'#3B5BFE'};width:8px;height:8px"></span>${r.brand}</div></td>
-        <td class="num">${fmtInt(r.count)}</td>
-        <td class="num">${fmtPct(share)}</td>
-      </tr>`;
-    }).join("")}
-  `;
+  if (regionBrandTable) {
+    regionBrandTable.innerHTML = `
+      <tr><th>Brand</th><th class="num">Count</th><th class="num">Share</th></tr>
+      ${rows.map(r => {
+        const share = total ? r.count / total : 0;
+        return `<tr>
+          <td><div class="brand-dot-cell"><span class="brand-dot" style="background:${BRAND_COLORS[r.brand]||'#3B5BFE'};width:8px;height:8px"></span>${r.brand}</div></td>
+          <td class="num">${fmtInt(r.count)}</td>
+          <td class="num">${fmtPct(share)}</td>
+        </tr>`;
+      }).join("")}
+    `;
+  }
 
-  // Top cities — clickable
   const feats = state.locationsGeojson.features.filter(
     f => f.properties.region === region && activeBrands.includes(f.properties.brand)
   );
@@ -2575,24 +2559,23 @@ function refreshRegionPanel() {
   feats.forEach(f => { const c = (f.properties.city || "Unknown").trim(); cityCounts[c] = (cityCounts[c] || 0) + 1; });
   const topCities = Object.entries(cityCounts).map(([city, count]) => ({ city, count })).sort((a, b) => b.count - a.count).slice(0, 10);
 
-  const cityNullCount = Object.values(state.cityNullStores || {}).reduce((s, r) => s + r._total, 0);
-  const cityNotice = cityNullCount > 0 ? `<tr><td colspan="2" style="padding:6px 8px;font-size:10px;color:var(--muted);background:var(--panel2);border-radius:6px;border:1px solid var(--border);line-height:1.4">📐 <strong>Data quality:</strong> ${cityNullCount} stores have coordinates but no city name — included in map density but excluded from city-level analysis.</td></tr>` : `<tr><td colspan="2" style="padding:6px 8px;font-size:10px;color:var(--muted);background:var(--panel2);border-radius:6px;border:1px solid var(--border);line-height:1.4">✅ <strong>Data quality:</strong> All stores have city names assigned.</td></tr>`;
-  document.getElementById("regionCityTable").innerHTML = `
-    ${cityNotice}
-    <tr><th>City</th><th class="num">Locations</th></tr>
-    ${topCities.map(r => `<tr><td><span class="city-link" data-city="${r.city}" data-region="${region}">${r.city}</span></td><td class="num">${fmtInt(r.count)}</td></tr>`).join("")}
-  `;
+  const cityNullCount = (state.cityNullStores?.[region]?._total) || 0;
+  const cityNotice = cityNullCount > 0 ? `<tr><td colspan="2" style="padding:6px 8px;font-size:10px;color:var(--muted);background:var(--panel2);border-radius:6px;border:1px solid var(--border);line-height:1.4">📐 <strong>Data quality:</strong> ${cityNullCount} stores in this region have coordinates but no city name — included in map density but excluded from city-level analysis.</td></tr>` : `<tr><td colspan="2" style="padding:6px 8px;font-size:10px;color:var(--muted);background:var(--panel2);border-radius:6px;border:1px solid var(--border);line-height:1.4">✅ <strong>Data quality:</strong> All stores in this region have city names assigned.</td></tr>`;
+  if (regionCityTable) {
+    regionCityTable.innerHTML = `
+      ${cityNotice}
+      <tr><th>City</th><th class="num">Locations</th></tr>
+      ${topCities.map(r => `<tr><td><span class="city-link" data-city="${r.city}" data-region="${region}">${r.city}</span></td><td class="num">${fmtInt(r.count)}</td></tr>`).join("")}
+    `;
+  }
 
-  // Wire city clicks
   document.querySelectorAll(".city-link").forEach(el => {
     el.onclick = () => {
       const cityName = el.dataset.city;
       const cityRegion = el.dataset.region;
       state.selectedCity = cityName;
-      // Try to set city select value
       const citySelect = document.getElementById("citySelect");
       if (citySelect) citySelect.value = cityName;
-      // Fly to the city — first check REGION_CITIES, then use data centroid
       flyToCityOrData(cityName, cityRegion);
       refreshAll();
     };
@@ -2757,28 +2740,32 @@ function refreshRegionalAnalytics() {
       const citySelect = document.getElementById("citySelect");
       if (citySelect) citySelect.value = cityName;
       flyToCityOrData(cityName, cityRegion);
-      refreshAll();
+      rebuildLocationsLayer();
     };
   });
 }
 
-// Enhanced city fly — prefer city bounds from actual data to avoid duplicate-name misalignment
+// Enhanced city fly — falls back to calculating centroid from data
 function flyToCityOrData(cityName, region) {
-  if (!state.map || !cityName) return;
-  const cityNorm = cityName.trim().toLowerCase();
+  if (!state.map) return;
+
   const pts = state.locationsGeojson.features.filter(f => {
-    const p = f.properties || {};
-    const sameCity = (p.city || "").trim().toLowerCase() === cityNorm;
-    const sameRegion = !region || p.region === region;
-    return sameCity && sameRegion;
+    const cityOk = (f.properties.city || "").trim().toLowerCase() === cityName.toLowerCase();
+    const regionOk = !region || f.properties.region === region;
+    return cityOk && regionOk;
   });
-  const bounds = getBoundsForPointFeatures(pts, 0.25);
-  if (bounds) {
-    state.map.flyToBounds(bounds, { padding: [24, 24], duration: 1 });
-    return;
+
+  if (pts.length > 0) {
+    const latlngs = pts.map(f => [f.geometry.coordinates[1], f.geometry.coordinates[0]]);
+    const bounds = L.latLngBounds(latlngs).pad(0.22);
+    if (bounds.isValid()) {
+      state.map.flyToBounds(bounds, { padding: [24, 24], duration: 1 });
+      return;
+    }
   }
+
   const cities = REGION_CITIES[region] || [];
-  const city = cities.find(c => (c.name || "").trim().toLowerCase() === cityNorm);
+  const city = cities.find(c => c.name.toLowerCase() === cityName.toLowerCase());
   if (city) {
     state.map.flyTo([city.lat, city.lon], 13, { duration: 1 });
   }
@@ -3195,35 +3182,14 @@ function wireUI() {
     });
   });
 
-  const regionSelect = document.getElementById("regionSelect");
-  if (regionSelect) {
-    regionSelect.addEventListener("change", e => {
-      state.selectedRegion = e.target.value || null;
-      state.selectedCity = null;
-      buildCitySelect(state.selectedRegion);
-      if (state.selectedRegion) flyToRegion(state.selectedRegion);
-      else flyToRegion(null);
-      refreshAll();
-    });
-  }
-
-  const citySelect = document.getElementById("citySelect");
-  if (citySelect) {
-    citySelect.addEventListener("change", e => {
-      state.selectedCity = e.target.value || null;
-      if (state.selectedCity) flyToCityOrData(state.selectedCity, state.selectedRegion);
-      else if (state.selectedRegion) flyToRegion(state.selectedRegion);
-      refreshAll();
-    });
-  }
-
   const heatmapToggle = document.getElementById("heatmapToggle");
   if (heatmapToggle) {
     heatmapToggle.addEventListener("change", e => {
       state.heatmapMode = e.target.checked;
       const heatmapSettings = document.getElementById("heatmapSettings");
       if (heatmapSettings) heatmapSettings.classList.toggle("hidden", !state.heatmapMode);
-      refreshAll();
+      buildHexLayer();
+      updateLegend();
     });
   }
 
@@ -3236,7 +3202,9 @@ function wireUI() {
         const secondary = document.getElementById("secondaryBrandSelect");
         if (secondary && state.compareBrand) secondary.value = state.compareBrand;
       }
-      refreshAll();
+      buildHexLayer();
+      rebuildLocationsLayer();
+      updateLegend();
     });
   }
 
@@ -3246,7 +3214,9 @@ function wireUI() {
       state.compareMode = e.target.value;
       const secondaryBrandRow = document.getElementById("secondaryBrandRow");
       if (secondaryBrandRow) secondaryBrandRow.classList.toggle("hidden", e.target.value !== "pick");
-      refreshAll();
+      buildHexLayer();
+      rebuildLocationsLayer();
+      updateLegend();
     });
   }
 
@@ -3255,7 +3225,9 @@ function wireUI() {
     secondaryBrandSelect.addEventListener("change", e => {
       state.secondaryBrand = e.target.value;
       state.compareBrand = e.target.value;
-      refreshAll();
+      buildHexLayer();
+      rebuildLocationsLayer();
+      updateLegend();
     });
   }
 
@@ -3274,7 +3246,9 @@ function wireUI() {
         state.compareBrand = available[0] || null;
         updateComparePillsState();
       }
-      refreshAll();
+      buildHexLayer();
+      rebuildLocationsLayer();
+      updateLegend();
     });
   }
 
@@ -3283,7 +3257,8 @@ function wireUI() {
     coverageViewSelect.value = state.coverageView;
     coverageViewSelect.addEventListener("change", e => {
       state.coverageView = e.target.value;
-      refreshAll();
+      buildHexLayer();
+      updateLegend();
     });
   }
 }
@@ -3327,7 +3302,6 @@ async function main() {
     computeUnlocatedStores();
     buildBrandList();
     buildBrandSelects();
-    buildCitySelect(null);
     initMap();
     setCountry("england");
     wireUI();
