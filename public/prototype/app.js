@@ -2186,9 +2186,9 @@ function renderRegionTable() {
 }
 
 function renderGreatBritainSummary() {
-  const selected = selectedArr();
+  const activeBrands = getActiveMapBrands();
   const populationTotal = Object.values(state.metrics.region_population_2023 || {}).reduce((s, v) => s + v, 0);
-  const countsTotal = selected.reduce((s, b) => s + (state.metrics.brand_totals[b] || 0), 0);
+  const countsTotal = activeBrands.reduce((s, b) => s + (state.metrics.brand_totals[b] || 0), 0);
 
   const hexSummary = getCoverageSummaryFromHexes();
   const coveragePct = populationTotal > 0 ? (hexSummary.coveredPop / populationTotal) : 0;
