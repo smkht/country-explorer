@@ -179,7 +179,6 @@ function getRadiusForBrand(brand, popDensity) {
 const state = {
   selectedBrands: new Set(),
   metric: "coverage",
-  coverageView: "coverage",
   selectedRegion: null,
   selectedCity: null,
   expandedRegion: null,
@@ -276,9 +275,7 @@ function hexFillCoverageMode(value, max, mode, pop, maxPop) {
 
   let t = Math.min(1, value / max);
 
-  if (mode === "coverage") t = Math.pow(t, 0.7);
-  if (mode === "covered_pop") t = Math.pow(t, 0.55);
-  if (mode === "overlap") t = Math.pow(t, 0.8);
+  t = Math.pow(t, 0.7);
 
   const l = 92 - 52 * t;
   const a = 0.25 + 0.6 * t;
@@ -296,9 +293,7 @@ function hexStrokeCoverageMode(value, max, mode, pop, maxPop) {
 
   let t = Math.min(1, value / max);
 
-  if (mode === "coverage") t = Math.pow(t, 0.7);
-  if (mode === "covered_pop") t = Math.pow(t, 0.55);
-  if (mode === "overlap") t = Math.pow(t, 0.8);
+  t = Math.pow(t, 0.7);
 
   return `rgba(59,91,254,${0.1 + 0.55 * t})`;
 }
@@ -403,24 +398,15 @@ function buildBrandList() {
       <span class="brand-count" data-brand="${b}">${fmtInt(total)}</span>
     `;
     el.onclick = () => {
-      if (state.selectedBrands.size === state.metrics.brands.length) {
-        state.selectedBrands = new Set([b]);
-        document.querySelectorAll(".brand-pill").forEach(pill => {
-          const name = pill.dataset.brand;
-          if (!name) return;
-          pill.classList.toggle("inactive", name !== b);
-        });
-      } else if (state.selectedBrands.has(b)) {
-        if (state.selectedBrands.size > 1) {
-          state.selectedBrands.delete(b);
-          el.classList.add("inactive");
-        }
-      } else {
-        state.selectedBrands.add(b);
-        el.classList.remove("inactive");
+      const isOnlySelected = state.selectedBrands.size === 1 && state.selectedBrands.has(b);
+      if (isOnlySelected) {
+        // Clicking the only selected brand → back to All
+        setAllBrands(state.metrics.brands);
+        return;
       }
-      const allPill = document.getElementById("brandAllPill");
-      if (allPill) allPill.classList.toggle("active", state.selectedBrands.size === state.metrics.brands.length);
+      // Select only this brand
+      state.selectedBrands = new Set([b]);
+      updateBrandPillSelection();
       state.selectedCity = null;
       updateComparePillsState();
       refreshAll();
@@ -1387,16 +1373,22 @@ function buildCompareHexLayer(baseHexes, compareBrand, bounds, cellSize) {
     compareIndex.set(key, f);
   });
 
-  const overlayFeatures = [];
+  const baseIndex = new Map();
+  baseHexes.forEach(f => {
+    const key = `${f.properties._cx.toFixed(5)}|${f.properties._cy.toFixed(5)}`;
+    baseIndex.set(key, f);
+  });
 
+  const overlayFeatures = [];
+  const processedKeys = new Set();
+
+  // Process all base hexes first
   baseHexes.forEach(baseHex => {
     const key = `${baseHex.properties._cx.toFixed(5)}|${baseHex.properties._cy.toFixed(5)}`;
+    processedKeys.add(key);
     const compareHex = compareIndex.get(key);
-
     const coverState = classifyCompareCell(baseHex, compareHex);
-
     if (coverState === "none" || coverState === "baseOnly") return;
-
     const source = compareHex || baseHex;
     const clone = JSON.parse(JSON.stringify(source));
     clone.properties.coverState = coverState;
@@ -1406,7 +1398,23 @@ function buildCompareHexLayer(baseHexes, compareBrand, bounds, cellSize) {
     clone.properties.compareCoveredPop = compareHex?.properties.coveredPop || 0;
     clone.properties.baseConfidence = baseHex.properties.confidence || 0;
     clone.properties.compareConfidence = compareHex?.properties.confidence || 0;
+    overlayFeatures.push(clone);
+  });
 
+  // Also process compare hexes with no matching base hex (compareOnly)
+  compareFeatures.forEach(compareHex => {
+    const key = `${compareHex.properties._cx.toFixed(5)}|${compareHex.properties._cy.toFixed(5)}`;
+    if (processedKeys.has(key)) return; // already handled above
+    const coverState = classifyCompareCell(null, compareHex);
+    if (coverState === "none") return;
+    const clone = JSON.parse(JSON.stringify(compareHex));
+    clone.properties.coverState = coverState;
+    clone.properties.baseCoveragePct = 0;
+    clone.properties.compareCoveragePct = compareHex.properties.coveragePct || 0;
+    clone.properties.baseCoveredPop = 0;
+    clone.properties.compareCoveredPop = compareHex.properties.coveredPop || 0;
+    clone.properties.baseConfidence = 0;
+    clone.properties.compareConfidence = compareHex.properties.confidence || 0;
     overlayFeatures.push(clone);
   });
 
@@ -1594,15 +1602,7 @@ function buildHexLayer() {
       const { features: baseFeatures, featureMode } = buildBrandCoverageFeatures(baseBrand, bounds, effectiveCellSize);
 
       baseFeatures.forEach(f => {
-        if (state.coverageView === "coverage") {
-          f.properties.displayValue = (f.properties.coveragePct || 0) * 100;
-        } else if (state.coverageView === "covered_pop") {
-          f.properties.displayValue = f.properties.coveredPop || 0;
-        } else if (state.coverageView === "overlap") {
-          f.properties.displayValue = f.properties.overlapIndex || 0;
-        } else {
-          f.properties.displayValue = (f.properties.coveragePct || 0) * 100;
-        }
+        f.properties.displayValue = (f.properties.coveragePct || 0) * 100;
 
         if (f.properties.displayValue > maxValue) maxValue = f.properties.displayValue;
         if ((f.properties.estPop || 0) > maxPop) maxPop = f.properties.estPop;
@@ -1679,15 +1679,7 @@ function buildHexLayer() {
         hex.properties.coveredAreaKm2 = coverage.coveredAreaKm2 || 0;
         hex.properties.isCovered = (coverage.coveragePct || 0) >= state.coverageThreshold;
 
-        if (state.coverageView === "coverage") {
-          hex.properties.displayValue = (coverage.coveragePct || 0) * 100;
-        } else if (state.coverageView === "covered_pop") {
-          hex.properties.displayValue = coverage.coveredPop || 0;
-        } else if (state.coverageView === "overlap") {
-          hex.properties.displayValue = coverage.overlapIndex || 0;
-        } else {
-          hex.properties.displayValue = (coverage.coveragePct || 0) * 100;
-        }
+        hex.properties.displayValue = (coverage.coveragePct || 0) * 100;
 
         if (hex.properties.displayValue > maxValue) maxValue = hex.properties.displayValue;
         if ((hex.properties.estPop || 0) > maxPop) maxPop = hex.properties.estPop;
@@ -1707,7 +1699,7 @@ function buildHexLayer() {
                 ? hexFillCoverageMode(
                     f.properties.displayValue,
                     maxValue,
-                    state.coverageView,
+                    "coverage",
                     f.properties.estPop,
                     maxPop
                   )
@@ -1770,10 +1762,7 @@ function updateLegend() {
     return;
   }
 
-  if (state.coverageView === "coverage") title.textContent = isLSOAReady() ? "LSOA coverage %" : "Coverage %";
-  else if (state.coverageView === "covered_pop") title.textContent = isLSOAReady() ? "LSOA covered population" : "Covered population";
-  else if (state.coverageView === "overlap") title.textContent = "Overlap";
-  else title.textContent = "Coverage %";
+  title.textContent = isLSOAReady() ? "LSOA coverage %" : "Coverage %";
 
   const brand = selectedArr().length === 1 ? selectedArr()[0] : null;
   const blocks = buildLegendBlocksForColor(brandColor(brand));
@@ -1959,12 +1948,6 @@ function setupDropdownListeners() {
 
 function refreshAll() {
   if (state.country !== "england") return;
-  const selected = selectedArr();
-  if (!state.heatmapMode && selected.length === 1 && state.coverageView === "overlap") {
-    state.coverageView = "coverage";
-    const coverageViewSelect = document.getElementById("coverageViewSelect");
-    if (coverageViewSelect) coverageViewSelect.value = "coverage";
-  }
   buildHexLayer();
   refreshKPIs();
   refreshBrandCounts();
@@ -3433,15 +3416,6 @@ function wireUI() {
     });
   }
 
-  const coverageViewSelect = document.getElementById("coverageViewSelect");
-  if (coverageViewSelect) {
-    coverageViewSelect.value = state.coverageView;
-    coverageViewSelect.addEventListener("change", e => {
-      state.coverageView = e.target.value;
-      refreshAll();
-      updateLegend();
-    });
-  }
 }
 
 // ── Main ──
