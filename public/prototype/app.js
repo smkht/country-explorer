@@ -1793,6 +1793,7 @@ function rebuildLocationsLayer() {
   const maxMarkers = zoom < 9 ? 6000 : zoom < 11 ? 8000 : 5000;
   const displayFeats = feats.length > maxMarkers ? feats.slice(0, maxMarkers) : feats;
 
+  const isCompareMode = isCoverageCompareMode();
   const dotRadius = zoom >= 13 ? 6 : zoom >= 11 ? 4 : zoom >= 9 ? 2.5 : 1.5;
   const dotWeight = zoom >= 11 ? 1.5 : 0.5;
 
@@ -1815,13 +1816,14 @@ function rebuildLocationsLayer() {
         const isBase = baseBrand && brand === baseBrand;
         const isCompare = compareBrand && brand === compareBrand;
 
+        const isHighlighted = isCompareMode && (isBase || isCompare);
         return L.circleMarker(latlng, {
-          radius: dotRadius,
-          weight: dotWeight,
-          color: "#fff",
-          opacity: zoom >= 11 ? 1 : 0.6,
+          radius: isHighlighted ? dotRadius + 2 : dotRadius,
+          weight: isHighlighted ? 2.5 : dotWeight,
+          color: isHighlighted ? "#fff" : "#fff",
+          opacity: 1,
           fillColor: BRAND_COLORS[brand] || "#3B5BFE",
-          fillOpacity: zoom >= 11 ? 0.9 : 0.75,
+          fillOpacity: isHighlighted ? 1 : (zoom >= 11 ? 0.9 : 0.75),
           className:
             isBase ? "marker-base" :
             isCompare ? "marker-compare" :
