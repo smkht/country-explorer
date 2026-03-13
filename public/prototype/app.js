@@ -2368,7 +2368,7 @@ function renderGreatBritainSummary() {
       <th class="num">Covered Pop / Location</th>
     </tr>
     <tr class="gb-row">
-      <td><strong>Great Britain</strong></td>
+      <td><strong>England</strong></td>
       <td class="num">${fmtInt(countsTotal)}</td>
       <td class="num">${hexSummary.coveredPop ? fmtInt(Math.round(hexSummary.coveredPop)) : "—"}</td>
       <td class="num">${coveragePct ? fmtPct(coveragePct) : "—"}</td>
