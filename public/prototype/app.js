@@ -384,24 +384,12 @@ function setTab(tab) {
 function buildBrandList() {
   const wrap = document.getElementById("brandList");
   wrap.innerHTML = "";
-  const defaultBrand = state.metrics.brands.includes("Domino's") ? "Domino's" : state.metrics.brands[0];
-  state.selectedBrands = new Set([defaultBrand]);
-
-  const allEl = document.createElement("div");
-  allEl.className = "brand-pill";
-  allEl.id = "brandAllPill";
-  allEl.innerHTML = `
-    <span class="brand-dot" style="background:linear-gradient(135deg,#3B5BFE,#22C1F1)"></span>
-    <span class="brand-name">All</span>
-    <span class="brand-count" data-brand="__all__">${fmtInt(Object.values(state.metrics.brand_totals).reduce((a, b) => a + b, 0))}</span>
-  `;
-  allEl.onclick = () => setAllBrands(state.metrics.brands);
-  wrap.appendChild(allEl);
+  state.selectedBrands = new Set(state.metrics.brands);
 
   state.metrics.brands.forEach(b => {
     const total = state.metrics.brand_totals[b] || 0;
     const el = document.createElement("div");
-    el.className = `brand-pill${b === defaultBrand ? " active" : " inactive"}`;
+    el.className = "brand-pill";
     el.dataset.brand = b;
     el.innerHTML = `
       <span class="brand-dot" style="background:${BRAND_COLORS[b] || '#3B5BFE'}"></span>
@@ -433,6 +421,17 @@ function buildBrandList() {
     };
     wrap.appendChild(el);
   });
+
+  const allEl = document.createElement("div");
+  allEl.className = "brand-pill active";
+  allEl.id = "brandAllPill";
+  allEl.innerHTML = `
+    <span class="brand-dot" style="background:linear-gradient(135deg,#3B5BFE,#22C1F1)"></span>
+    <span class="brand-name">All</span>
+    <span class="brand-count" data-brand="__all__">${fmtInt(Object.values(state.metrics.brand_totals).reduce((a, b) => a + b, 0))}</span>
+  `;
+  allEl.onclick = () => setAllBrands(state.metrics.brands);
+  wrap.appendChild(allEl);
 
   updateComparePillsState();
 }
