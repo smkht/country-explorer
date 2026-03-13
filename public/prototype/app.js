@@ -2999,6 +2999,13 @@ async function main() {
     initMap();
     setCountry("england");
     wireUI();
+    const heatmapToggle = document.getElementById("heatmapToggle");
+    if (heatmapToggle) {
+      heatmapToggle.checked = false;
+      state.heatmapMode = false;
+      const heatmapSettings = document.getElementById("heatmapSettings");
+      if (heatmapSettings) heatmapSettings.classList.add("hidden");
+    }
     refreshAll();
   } catch (err) {
     console.error(err);
