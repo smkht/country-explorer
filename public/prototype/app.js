@@ -2534,63 +2534,51 @@ function renderRegionTable() {
 
       if (mapBrands.length === 2) {
         const [b1, b2] = mapBrands;
+        // Only show cities where both brands are present
+        const filteredRows = cityRows.filter(c =>
+          safeBrandValue(c.brandCounts, b1) > 0 && safeBrandValue(c.brandCounts, b2) > 0
+        );
         html += `
           <tr class="region-accordion"><td colspan="${colspan}">
             <table class="table">
               <tr>
                 <th>City</th>
                 <th class="num">${b1.split("'")[0]} Locs</th>
-                <th class="num">${b1.split("'")[0]} Pop</th>
                 <th class="num">${b2.split("'")[0]} Locs</th>
-                <th class="num">${b2.split("'")[0]} Pop</th>
-                <th class="num">Gap</th>
+                <th class="num">Store advantage</th>
               </tr>
-              ${cityRows.slice(0, 25).map(c => {
+              ${filteredRows.slice(0, 25).map(c => {
                 const l1 = safeBrandValue(c.brandCounts, b1);
                 const l2 = safeBrandValue(c.brandCounts, b2);
-                const cityPop = c.approxPop || 0;
-                const cityArea = c.approxArea || 0;
-                const cm1 = computeCoverageMetrics(l1, cityArea, cityPop, l1>0?1:0, cityArea>0?l1/(cityArea/1000):0, l1>0?{[b1]:l1}:{});
-                const cm2 = computeCoverageMetrics(l2, cityArea, cityPop, l2>0?1:0, cityArea>0?l2/(cityArea/1000):0, l2>0?{[b2]:l2}:{});
-                const p1 = cm1.coveredPop || 0;
-                const p2 = cm2.coveredPop || 0;
-                const gap = p1 - p2;
+                const gap = l1 - l2;
                 const gc = gap > 0 ? "#43A047" : gap < 0 ? "#E53935" : "var(--muted)";
                 return `
                   <tr class="city-row ${c.city === state.selectedCity ? 'active' : ''}" data-city="${c.city}" data-region="${r.region}">
                     <td>${c.city}</td>
                     <td class="num">${fmtInt(l1)}</td>
-                    <td class="num">${p1 ? fmtInt(Math.round(p1)) : "—"}</td>
                     <td class="num">${fmtInt(l2)}</td>
-                    <td class="num">${p2 ? fmtInt(Math.round(p2)) : "—"}</td>
-                    <td class="num" style="color:${gc}">${gap===0?"—":`${gap>0?"+":""}${fmtInt(Math.round(gap))}`}</td>
+                    <td class="num" style="color:${gc}">${gap===0?"=":`${gap>0?"+":""}${gap}`}</td>
                   </tr>`;
               }).join("")}
+              ${filteredRows.length === 0 ? `<tr><td colspan="4" style="color:var(--muted);text-align:center;padding:10px">No cities with both brands present</td></tr>` : ''}
             </table>
           </td></tr>`;
       } else {
         const brand = mapBrands[0] || '';
+        const filteredRows = cityRows.filter(c => (brand ? safeBrandValue(c.brandCounts, brand) : c.total) > 0);
         html += `
           <tr class="region-accordion"><td colspan="${colspan}">
             <table class="table">
               <tr>
                 <th>City</th>
                 <th class="num">Locations</th>
-                <th class="num">Covered Pop</th>
-                <th class="num">Coverage %</th>
               </tr>
-              ${cityRows.slice(0, 25).map(c => {
+              ${filteredRows.slice(0, 25).map(c => {
                 const locs = brand ? safeBrandValue(c.brandCounts, brand) : c.total;
-                const cityPop = c.approxPop || 0;
-                const cityArea = c.approxArea || 0;
-                const cm = computeCoverageMetrics(locs, cityArea, cityPop, locs>0?1:0, cityArea>0?locs/(cityArea/1000):0, locs>0?{[brand]:locs}:{});
-                const pop = cm.coveredPop || 0;
                 return `
                   <tr class="city-row ${c.city === state.selectedCity ? 'active' : ''}" data-city="${c.city}" data-region="${r.region}">
                     <td>${c.city}</td>
                     <td class="num">${fmtInt(locs)}</td>
-                    <td class="num">${pop ? fmtInt(Math.round(pop)) : "—"}</td>
-                    <td class="num">${cm.coveragePct ? fmtPct(cm.coveragePct) : "—"}</td>
                   </tr>`;
               }).join("")}
             </table>
