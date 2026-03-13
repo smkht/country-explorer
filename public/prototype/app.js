@@ -1324,7 +1324,8 @@ function buildHexLayer() {
     state.compareHexLayer = null;
   }
 
-  const bounds = state.map.getBounds().pad(0.15);
+  const countryView = !state.selectedRegion && !state.selectedCity && zoom <= 8.5;
+  const bounds = countryView ? (getEnglandBounds() || state.map.getBounds()) : state.map.getBounds().pad(0.15);
   const bbox = [bounds.getWest(), bounds.getSouth(), bounds.getEast(), bounds.getNorth()];
   const brandFilter = new Set(activeBrands);
   const locations = getPointsInBounds(bounds, brandFilter, null);
