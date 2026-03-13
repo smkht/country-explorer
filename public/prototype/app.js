@@ -1992,7 +1992,7 @@ function renderRegionTable() {
   const rows = state.metrics.regions.map(region => {
     const counts = state.metrics.region_brand_counts[region] || {};
     const total = selected.reduce((s, b) => s + (counts[b] || 0), 0);
-    const population = popByRegion[region] || 0;
+    const population = getRegionPopulation(region) || popByRegion[region] || 0;
 
     const hexSummary = getCoverageSummaryFromHexes(region);
     const coveragePct = population > 0 ? (hexSummary.coveredPop / population) : 0;
@@ -2025,7 +2025,7 @@ function renderRegionTable() {
     const isActive = r.region === state.selectedRegion;
 
     html += `
-      <tr class="region-row ${isActive ? 'active' : ''}" data-region="${r.region}">
+      <tr class="region-row ${isActive ? "active" : ""}" data-region="${r.region}">
         <td><strong>${r.region.replace(" (England)", "")}</strong></td>
         <td class="num">${fmtInt(r.total)}</td>
         <td class="num">${r.coveredPop ? fmtInt(Math.round(r.coveredPop)) : "—"}</td>
@@ -2037,9 +2037,10 @@ function renderRegionTable() {
 
     if (isActive) {
       const cityRows = buildCityRowsForRegion(r.region);
+      const mapBrands = getActiveMapBrands();
 
-      if (selected.length === 1) {
-        const brand = selected[0];
+      if (mapBrands.length === 1) {
+        const brand = mapBrands[0];
         html += `
           <tr class="region-accordion">
             <td colspan="6">
@@ -2066,8 +2067,8 @@ function renderRegionTable() {
             </td>
           </tr>
         `;
-      } else if (selected.length === 2) {
-        const [baseBrand, compareBrand] = selected;
+      } else if (mapBrands.length === 2) {
+        const [baseBrand, compareBrand] = mapBrands;
 
         html += `
           <tr class="region-accordion">
@@ -2110,7 +2111,8 @@ function renderRegionTable() {
                   const basePop = baseCoverage.coveredPop || 0;
                   const comparePop = compareCoverage.coveredPop || 0;
                   const gap = basePop - comparePop;
-                  const opportunity = Math.max(0, comparePop - basePop) * (1 + Math.max(0, compareLocs - baseLocs) * 0.15);
+                  const opportunity = Math.max(0, comparePop - basePop) *
+                    (1 + Math.max(0, compareLocs - baseLocs) * 0.15);
 
                   return `
                     <tr class="city-row" data-city="${c.city}" data-region="${r.region}">
@@ -2119,8 +2121,8 @@ function renderRegionTable() {
                       <td class="num">${fmtInt(compareLocs)}</td>
                       <td class="num">${basePop ? fmtInt(Math.round(basePop)) : "—"}</td>
                       <td class="num">${comparePop ? fmtInt(Math.round(comparePop)) : "—"}</td>
-                      <td class="num" style="color:${gap > 0 ? '#43A047' : gap < 0 ? '#E53935' : 'var(--muted)'}">
-                        ${gap === 0 ? "—" : `${gap > 0 ? '+' : ''}${fmtInt(Math.round(gap))}`}
+                      <td class="num" style="color:${gap > 0 ? "#43A047" : gap < 0 ? "#E53935" : "var(--muted)"}">
+                        ${gap === 0 ? "—" : `${gap > 0 ? "+" : ""}${fmtInt(Math.round(gap))}`}
                       </td>
                       <td class="num">${formatOpportunityScore(opportunity)}</td>
                     </tr>
