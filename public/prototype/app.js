@@ -3136,40 +3136,54 @@ function wireUI() {
     });
   });
 
-  document.getElementById("heatmapToggle").addEventListener("change", e => {
-    state.heatmapMode = e.target.checked;
-    document.getElementById("heatmapSettings").classList.toggle("hidden", !state.heatmapMode);
-    buildHexLayer();
-    updateLegend();
-  });
+  const heatmapToggle = document.getElementById("heatmapToggle");
+  if (heatmapToggle) {
+    heatmapToggle.addEventListener("change", e => {
+      state.heatmapMode = e.target.checked;
+      const heatmapSettings = document.getElementById("heatmapSettings");
+      if (heatmapSettings) heatmapSettings.classList.toggle("hidden", !state.heatmapMode);
+      buildHexLayer();
+      updateLegend();
+    });
+  }
 
-  document.getElementById("primaryBrandSelect").addEventListener("change", e => {
-    state.primaryBrand = e.target.value;
-    if (state.compareBrand === state.primaryBrand) {
-      state.compareBrand = state.metrics.brands.find(b => b !== state.primaryBrand) || null;
-      const secondary = document.getElementById("secondaryBrandSelect");
-      if (secondary && state.compareBrand) secondary.value = state.compareBrand;
-    }
-    buildHexLayer();
-    rebuildLocationsLayer();
-    updateLegend();
-  });
+  const primaryBrandSelect = document.getElementById("primaryBrandSelect");
+  if (primaryBrandSelect) {
+    primaryBrandSelect.addEventListener("change", e => {
+      state.primaryBrand = e.target.value;
+      if (state.compareBrand === state.primaryBrand) {
+        state.compareBrand = state.metrics.brands.find(b => b !== state.primaryBrand) || null;
+        const secondary = document.getElementById("secondaryBrandSelect");
+        if (secondary && state.compareBrand) secondary.value = state.compareBrand;
+      }
+      buildHexLayer();
+      rebuildLocationsLayer();
+      updateLegend();
+    });
+  }
 
-  document.getElementById("compareModeSelect").addEventListener("change", e => {
-    state.compareMode = e.target.value;
-    document.getElementById("secondaryBrandRow").classList.toggle("hidden", e.target.value !== "pick");
-    buildHexLayer();
-    rebuildLocationsLayer();
-    updateLegend();
-  });
+  const compareModeSelect = document.getElementById("compareModeSelect");
+  if (compareModeSelect) {
+    compareModeSelect.addEventListener("change", e => {
+      state.compareMode = e.target.value;
+      const secondaryBrandRow = document.getElementById("secondaryBrandRow");
+      if (secondaryBrandRow) secondaryBrandRow.classList.toggle("hidden", e.target.value !== "pick");
+      buildHexLayer();
+      rebuildLocationsLayer();
+      updateLegend();
+    });
+  }
 
-  document.getElementById("secondaryBrandSelect").addEventListener("change", e => {
-    state.secondaryBrand = e.target.value;
-    state.compareBrand = e.target.value;
-    buildHexLayer();
-    rebuildLocationsLayer();
-    updateLegend();
-  });
+  const secondaryBrandSelect = document.getElementById("secondaryBrandSelect");
+  if (secondaryBrandSelect) {
+    secondaryBrandSelect.addEventListener("change", e => {
+      state.secondaryBrand = e.target.value;
+      state.compareBrand = e.target.value;
+      buildHexLayer();
+      rebuildLocationsLayer();
+      updateLegend();
+    });
+  }
 
   const compareToggle = document.getElementById("compareToggle");
   if (compareToggle) {
