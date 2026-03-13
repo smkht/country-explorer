@@ -3188,6 +3188,12 @@ function wireUI() {
   if (compareToggle) {
     compareToggle.addEventListener("change", e => {
       state.compareEnabled = e.target.checked;
+      if (state.compareEnabled && !state.compareBrand) {
+        const selected = selectedArr();
+        const available = state.metrics.brands.filter(b => !selected.includes(b));
+        state.compareBrand = available[0] || null;
+        updateComparePillsState();
+      }
       buildHexLayer();
       rebuildLocationsLayer();
       updateLegend();
