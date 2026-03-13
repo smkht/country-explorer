@@ -2308,13 +2308,13 @@ function refreshRegionPanel() {
 }
 
 function refreshRegionList() {
-  const selected = selectedArr();
+  const activeBrands = getActiveMapBrands();
   const popByRegion = state.metrics.region_population_2023 || {};
   const incomeByRegion = state.metrics.region_income_gdhi_per_head_2023 || {};
   const rows = state.metrics.regions.map(region => {
     const counts = state.metrics.region_brand_counts[region] || {};
     let total = 0;
-    selected.forEach(b => total += (counts[b] || 0));
+    activeBrands.forEach(b => total += (counts[b] || 0));
     const area = state.metrics.region_area_km2[region] || 1;
     const density = total / (area / 1000);
     const population = popByRegion[region] || null;
