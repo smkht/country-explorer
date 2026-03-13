@@ -207,7 +207,8 @@ const state = {
   _pointIndex: null,
   _lsoaIndex: null,
   _lsoaById: null,
-  _canvasRenderer: null
+  _canvasRenderer: null,
+  _coverageSummaryCache: null
 };
 
 const fmtInt = x => new Intl.NumberFormat("en-GB").format(x);
@@ -512,6 +513,12 @@ function getRegionPopulation(regionName) {
 
 function getRegionArea(regionName) {
   return state.metrics?.region_area_km2?.[regionName] || 1;
+}
+
+function getEnglandBounds() {
+  if (!state.regionsGeojson) return null;
+  const [w, s, e, n] = turf.bbox(state.regionsGeojson);
+  return L.latLngBounds([s, w], [n, e]);
 }
 
 // ── Spatial index for fast point lookups ──
@@ -1789,6 +1796,23 @@ function getCompareSummaryFromHexes() {
 }
 
 function getCoverageSummaryFromHexes(regionName = null) {
+  updateCoverageSummaryCache();
+  if (state._coverageSummaryCache) {
+    if (regionName) {
+      return state._coverageSummaryCache.byRegion[regionName] || {
+        coveredPop: 0,
+        coveredAreaKm2: 0,
+        coveredHexes: 0,
+        avgContributingStores: 0
+      };
+    }
+    return state._coverageSummaryCache.all || {
+      coveredPop: 0,
+      coveredAreaKm2: 0,
+      coveredHexes: 0,
+      avgContributingStores: 0
+    };
+  }
   if (!state.hexLayer) {
     return {
       coveredPop: 0,
@@ -1830,6 +1854,145 @@ function getCoverageSummaryFromHexes(regionName = null) {
     coveredHexes,
     avgContributingStores: coveredHexes ? (contributingStoresSum / coveredHexes) : 0
   };
+}
+
+function summarizeCoverageFeatures(features) {
+  const byRegion = {};
+  const all = {
+    coveredPop: 0,
+    coveredAreaKm2: 0,
+    coveredHexes: 0,
+    avgContributingStores: 0
+  };
+  let allStores = 0;
+
+  features.forEach(f => {
+    if (!f?.properties) return;
+    const cx = f.properties._cx;
+    const cy = f.properties._cy;
+    if (cx == null || cy == null) return;
+
+    const region = fastRegionLookup(cx, cy);
+    if (!region) return;
+
+    const threshold = f.properties.threshold ?? 0.10;
+    const coveragePct = f.properties.coveragePct || 0;
+    if (coveragePct < threshold) return;
+
+    if (!byRegion[region]) {
+      byRegion[region] = {
+        coveredPop: 0,
+        coveredAreaKm2: 0,
+        coveredHexes: 0,
+        avgContributingStores: 0
+      };
+    }
+
+    const coveredPop = f.properties.coveredPop || 0;
+    const coveredAreaKm2 = f.properties.coveredAreaKm2 || 0;
+    const contributing = f.properties.contributingStores || 0;
+
+    byRegion[region].coveredPop += coveredPop;
+    byRegion[region].coveredAreaKm2 += coveredAreaKm2;
+    byRegion[region].coveredHexes += 1;
+    byRegion[region].avgContributingStores += contributing;
+
+    all.coveredPop += coveredPop;
+    all.coveredAreaKm2 += coveredAreaKm2;
+    all.coveredHexes += 1;
+    allStores += contributing;
+  });
+
+  Object.keys(byRegion).forEach(region => {
+    const entry = byRegion[region];
+    entry.avgContributingStores = entry.coveredHexes ? (entry.avgContributingStores / entry.coveredHexes) : 0;
+  });
+  all.avgContributingStores = all.coveredHexes ? (allStores / all.coveredHexes) : 0;
+
+  return { byRegion, all };
+}
+
+function updateCoverageSummaryCache() {
+  if (state.heatmapMode) {
+    state._coverageSummaryCache = {
+      key: "heatmap",
+      byRegion: {},
+      all: { coveredPop: 0, coveredAreaKm2: 0, coveredHexes: 0, avgContributingStores: 0 }
+    };
+    return;
+  }
+
+  const activeBrands = getActiveMapBrands();
+  const key = JSON.stringify({
+    brands: activeBrands.slice().sort(),
+    compare: isCoverageCompareMode() ? state.compareBrand : null,
+    base: activeBrands.length === 1 ? activeBrands[0] : "multi",
+    threshold: state.coverageThreshold
+  });
+
+  if (state._coverageSummaryCache?.key === key) return;
+
+  const bounds = getEnglandBounds();
+  if (!bounds) return;
+
+  let features = [];
+  if (activeBrands.length === 1) {
+    if (isLSOAReady()) {
+      features = computeLSOACoverageForBrand(activeBrands[0], bounds, null);
+    } else {
+      const bbox = [bounds.getWest(), bounds.getSouth(), bounds.getEast(), bounds.getNorth()];
+      const cellSize = cellSizeForZoom(8);
+      const hexGrid = turf.hexGrid(bbox, cellSize, { units: "kilometers" });
+      const hexAreaKm2 = hexGrid.features.length > 0 ? turf.area(hexGrid.features[0]) / 1e6 : 1;
+      const brandFilter = new Set(activeBrands);
+      const maxSearchRadiusKm = 6;
+
+      hexGrid.features.forEach(hex => {
+        const [cx, cy] = getHexCentroid(hex);
+        hex.properties._cx = cx;
+        hex.properties._cy = cy;
+        hex.properties.estPop = fastEstimatePopulation(hexAreaKm2, cx, cy);
+        const nearbyStores = getNearbyStoresForHex(cx, cy, maxSearchRadiusKm, brandFilter, null);
+        const coverage = computeCoverageFromNearbyStores(cx, cy, hex.properties.estPop, hexAreaKm2, nearbyStores);
+        const threshold = getBrandCoverageThreshold(activeBrands[0]);
+
+        hex.properties.coveragePct = coverage.coveragePct || 0;
+        hex.properties.coveredPop = coverage.coveredPop || 0;
+        hex.properties.coveredAreaKm2 = coverage.coveredAreaKm2 || 0;
+        hex.properties.contributingStores = coverage.contributingStores || 0;
+        hex.properties.threshold = threshold;
+      });
+
+      features = hexGrid.features;
+    }
+  } else {
+    const bbox = [bounds.getWest(), bounds.getSouth(), bounds.getEast(), bounds.getNorth()];
+    const cellSize = cellSizeForZoom(8);
+    const hexGrid = turf.hexGrid(bbox, cellSize, { units: "kilometers" });
+    const hexAreaKm2 = hexGrid.features.length > 0 ? turf.area(hexGrid.features[0]) / 1e6 : 1;
+    const brandFilter = new Set(activeBrands);
+    const maxSearchRadiusKm = 6;
+
+    hexGrid.features.forEach(hex => {
+      const [cx, cy] = getHexCentroid(hex);
+      hex.properties._cx = cx;
+      hex.properties._cy = cy;
+      hex.properties.estPop = fastEstimatePopulation(hexAreaKm2, cx, cy);
+      const nearbyStores = getNearbyStoresForHex(cx, cy, maxSearchRadiusKm, brandFilter, null);
+      const coverage = computeCoverageFromNearbyStores(cx, cy, hex.properties.estPop, hexAreaKm2, nearbyStores);
+
+      hex.properties.coveragePct = coverage.coveragePct || 0;
+      hex.properties.coveredPop = coverage.coveredPop || 0;
+      hex.properties.coveredAreaKm2 = coverage.coveredAreaKm2 || 0;
+      hex.properties.contributingStores = coverage.contributingStores || 0;
+      hex.properties.threshold = 0.10;
+    });
+
+    features = hexGrid.features;
+  }
+
+  const summary = summarizeCoverageFeatures(features);
+  state._coverageSummaryCache = { key, byRegion: summary.byRegion, all: summary.all };
 }
 
 function refreshKPIs() {
