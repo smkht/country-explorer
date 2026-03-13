@@ -2888,7 +2888,10 @@ function refreshCompareRegionDeep(rows, scopeType, region, regionLabel, city) {
 
 // ── Wire UI ──
 function wireUI() {
-  document.querySelectorAll(".sidebar-btn[data-tab]").forEach(b => b.addEventListener("click", () => setTab(b.dataset.tab)));
+  document.querySelectorAll(".sidebar-btn[data-tab]").forEach(b =>
+    b.addEventListener("click", () => setTab(b.dataset.tab))
+  );
+
   document.querySelectorAll("[data-region-sort]").forEach(btn => {
     btn.addEventListener("click", () => {
       document.querySelectorAll("[data-region-sort]").forEach(b => b.classList.remove("active"));
@@ -2898,7 +2901,6 @@ function wireUI() {
     });
   });
 
-  // Heatmap toggle
   document.getElementById("heatmapToggle").addEventListener("change", e => {
     state.heatmapMode = e.target.checked;
     document.getElementById("heatmapSettings").classList.toggle("hidden", !state.heatmapMode);
@@ -2908,30 +2910,36 @@ function wireUI() {
 
   document.getElementById("primaryBrandSelect").addEventListener("change", e => {
     state.primaryBrand = e.target.value;
+    if (state.compareBrand === state.primaryBrand) {
+      state.compareBrand = state.metrics.brands.find(b => b !== state.primaryBrand) || null;
+      const secondary = document.getElementById("secondaryBrandSelect");
+      if (secondary && state.compareBrand) secondary.value = state.compareBrand;
+    }
     buildHexLayer();
+    rebuildLocationsLayer();
+    updateLegend();
   });
 
   document.getElementById("compareModeSelect").addEventListener("change", e => {
     state.compareMode = e.target.value;
     document.getElementById("secondaryBrandRow").classList.toggle("hidden", e.target.value !== "pick");
     buildHexLayer();
+    rebuildLocationsLayer();
+    updateLegend();
   });
 
   document.getElementById("secondaryBrandSelect").addEventListener("change", e => {
     state.secondaryBrand = e.target.value;
-    if (!state.heatmapMode) state.compareBrand = e.target.value;
+    state.compareBrand = e.target.value;
     buildHexLayer();
     rebuildLocationsLayer();
+    updateLegend();
   });
 
   const compareToggle = document.getElementById("compareToggle");
   if (compareToggle) {
     compareToggle.addEventListener("change", e => {
       state.compareEnabled = e.target.checked;
-      if (state.compareEnabled && selectedArr().length !== 1) {
-        state.compareEnabled = false;
-        e.target.checked = false;
-      }
       buildHexLayer();
       rebuildLocationsLayer();
       updateLegend();
@@ -2947,7 +2955,6 @@ function wireUI() {
       updateLegend();
     });
   }
-
 }
 
 // ── Main ──
