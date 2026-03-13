@@ -151,17 +151,20 @@ const ENGLAND_TOTAL_POPULATION = Object.values(REGION_POPULATION).reduce((s, v) 
 
 // Estimated delivery profile by chain (heuristic, not actual ops data)
 const DELIVERY_PROFILE = {
-  "Domino's":   { baseKm: 3.8, urbanKm: 2.4, suburbanKm: 3.4, ruralKm: 4.8, weight: 1.15 },
-  "Papa Johns": { baseKm: 3.6, urbanKm: 2.3, suburbanKm: 3.2, ruralKm: 4.5, weight: 1.10 },
-  "McDonald's": { baseKm: 3.0, urbanKm: 2.0, suburbanKm: 2.8, ruralKm: 4.0, weight: 1.00 },
-  "KFC":        { baseKm: 3.1, urbanKm: 2.1, suburbanKm: 2.9, ruralKm: 4.1, weight: 1.00 },
-  "Subway":     { baseKm: 2.6, urbanKm: 1.8, suburbanKm: 2.5, ruralKm: 3.5, weight: 0.90 },
-  "Nando's":    { baseKm: 3.2, urbanKm: 2.2, suburbanKm: 3.0, ruralKm: 4.2, weight: 0.95 }
+  // urbanKm: dense city — congestion limits range, many stores nearby
+  // suburbanKm: mid-density — main coverage zone
+  // ruralKm: sparse — stores cover much larger areas, real-world UK delivery ~5-7km
+  "Domino's":   { baseKm: 3.8, urbanKm: 2.2, suburbanKm: 3.6, ruralKm: 6.5, weight: 1.15 },
+  "Papa Johns": { baseKm: 3.6, urbanKm: 2.1, suburbanKm: 3.4, ruralKm: 6.0, weight: 1.10 },
+  "McDonald's": { baseKm: 3.0, urbanKm: 1.8, suburbanKm: 2.9, ruralKm: 4.5, weight: 1.00 },
+  "KFC":        { baseKm: 3.1, urbanKm: 1.9, suburbanKm: 3.0, ruralKm: 4.6, weight: 1.00 },
+  "Subway":     { baseKm: 2.6, urbanKm: 1.6, suburbanKm: 2.6, ruralKm: 3.8, weight: 0.90 },
+  "Nando's":    { baseKm: 3.2, urbanKm: 2.0, suburbanKm: 3.1, ruralKm: 5.0, weight: 0.95 }
 };
 
 function getUrbanBand(popDensity) {
-  if (popDensity >= 3000) return "urban";
-  if (popDensity >= 800) return "suburban";
+  if (popDensity >= 4000) return "urban";    // dense city cores only
+  if (popDensity >= 600)  return "suburban"; // wider suburban band
   return "rural";
 }
 
@@ -323,26 +326,27 @@ function hexStrokeHeatmap(ratio) {
 function cellSizeForZoom(zoom) {
   const focused = !!state.selectedRegion;
 
+  // Smaller cells = smoother blob look, less obvious grid
   if (focused) {
-    if (zoom >= 14) return 0.35;
-    if (zoom >= 13) return 0.55;
-    if (zoom >= 12) return 0.8;
-    if (zoom >= 11) return 1.1;
-    if (zoom >= 10) return 1.6;
-    if (zoom >= 9) return 2.6;
-    if (zoom >= 8) return 4;
-    return 6;
+    if (zoom >= 14) return 0.22;
+    if (zoom >= 13) return 0.35;
+    if (zoom >= 12) return 0.55;
+    if (zoom >= 11) return 0.8;
+    if (zoom >= 10) return 1.2;
+    if (zoom >= 9) return 2.0;
+    if (zoom >= 8) return 3.0;
+    return 4.5;
   }
 
-  if (zoom >= 14) return 0.6;
-  if (zoom >= 13) return 0.9;
-  if (zoom >= 12) return 1.2;
-  if (zoom >= 11) return 1.8;
-  if (zoom >= 10) return 2.5;
-  if (zoom >= 9) return 4;
-  if (zoom >= 8) return 5;
-  if (zoom >= 7) return 6;
-  return 8;
+  if (zoom >= 14) return 0.4;
+  if (zoom >= 13) return 0.65;
+  if (zoom >= 12) return 0.95;
+  if (zoom >= 11) return 1.4;
+  if (zoom >= 10) return 2.0;
+  if (zoom >= 9) return 3.2;
+  if (zoom >= 8) return 4.2;
+  if (zoom >= 7) return 5.2;
+  return 7;
 }
 
 // ── Country handling ──
@@ -826,21 +830,19 @@ function initMap() {
 
   buildHexLayer();
 
-  // Faster debounce + rebuild on both zoom and pan at high zoom
   map.on('zoomend', () => {
     clearTimeout(state.hexDebounce);
     state.hexDebounce = setTimeout(() => {
       buildHexLayer();
       rebuildLocationsLayer();
-    }, 60);
+    }, 150);
   });
   map.on('moveend', () => {
-    if (map.getZoom() >= 7.5) {
-      clearTimeout(state.hexDebounce);
-      state.hexDebounce = setTimeout(() => {
-        rebuildLocationsLayer();
-      }, 80);
-    }
+    clearTimeout(state.hexDebounce);
+    state.hexDebounce = setTimeout(() => {
+      buildHexLayer();
+      rebuildLocationsLayer();
+    }, 200);
   });
 }
 
@@ -1501,13 +1503,21 @@ function buildHexLayer() {
   }
 
   const countryView = !state.selectedRegion && !state.selectedCity && zoom <= 8.5;
-  const bounds = countryView ? (getEnglandBounds() || state.map.getBounds()) : state.map.getBounds().pad(0.15);
+  // Pad bounds generously so coverage extends beyond visible viewport when panning
+  const bounds = countryView ? (getEnglandBounds() || state.map.getBounds()) : state.map.getBounds().pad(0.5);
   const bbox = [bounds.getWest(), bounds.getSouth(), bounds.getEast(), bounds.getNorth()];
+
+  // Cap hex count for performance — clamp cell size so we never generate >2000 hexes
+  const bboxW = bounds.getEast() - bounds.getWest();
+  const bboxH = bounds.getNorth() - bounds.getSouth();
+  const approxDegPerKm = 0.009;
+  const estHexCount = (bboxW / (cellSize * approxDegPerKm)) * (bboxH / (cellSize * approxDegPerKm * 0.87));
+  const effectiveCellSize = estHexCount > 2000 ? cellSize * Math.sqrt(estHexCount / 2000) : cellSize;
   const brandFilter = new Set(activeBrands);
   const locations = getPointsInBounds(bounds, brandFilter, null);
 
   if (isHeatmap) {
-    const hexGrid = turf.hexGrid(bbox, cellSize, { units: "kilometers" });
+    const hexGrid = turf.hexGrid(bbox, effectiveCellSize, { units: "kilometers" });
     const hexAreaKm2 = hexGrid.features.length > 0 ? turf.area(hexGrid.features[0]) / 1e6 : 1;
     const hexPoints = binPointsToHexes(hexGrid, locations);
 
@@ -1581,7 +1591,7 @@ function buildHexLayer() {
     state.baseBrand = baseBrand;
 
     if (baseBrand) {
-      const { features: baseFeatures, featureMode } = buildBrandCoverageFeatures(baseBrand, bounds, cellSize);
+      const { features: baseFeatures, featureMode } = buildBrandCoverageFeatures(baseBrand, bounds, effectiveCellSize);
 
       baseFeatures.forEach(f => {
         if (state.coverageView === "coverage") {
@@ -1643,14 +1653,14 @@ function buildHexLayer() {
       ).addTo(state.map);
 
       if (isCoverageCompareMode() && state.compareBrand !== baseBrand) {
-        buildCompareHexLayer(baseFeatures, state.compareBrand, bounds, cellSize);
+        buildCompareHexLayer(baseFeatures, state.compareBrand, bounds, effectiveCellSize);
       } else if (state.compareHexLayer) {
         state.compareHexLayer.remove();
         state.compareHexLayer = null;
       }
 
     } else {
-      const hexGrid = turf.hexGrid(bbox, cellSize, { units: "kilometers" });
+      const hexGrid = turf.hexGrid(bbox, effectiveCellSize, { units: "kilometers" });
       const hexAreaKm2 = hexGrid.features.length > 0 ? turf.area(hexGrid.features[0]) / 1e6 : 1;
       const maxSearchRadiusKm = 8;
 
