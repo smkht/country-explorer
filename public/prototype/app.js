@@ -1192,7 +1192,7 @@ function computeCoverageFromNearbyStores(cx, cy, estPop, areaKm2, nearbyStores, 
 
 function buildBrandCoverageFeatures(brand, bounds, cellSize) {
   if (isLSOAReady() && (state.selectedRegion || (state.map && state.map.getZoom() >= 9))) {
-    const features = computeLSOACoverageForBrand(brand, bounds, null);
+    const features = computeLSOACoverageForBrand(brand, bounds, state.selectedRegion || null);
     return {
       features,
       featureMode: "lsoa"
@@ -1297,6 +1297,16 @@ function buildCompareHexLayer(baseHexes, compareBrand, bounds, cellSize) {
     { type: "FeatureCollection", features: overlayFeatures },
     {
       style: f => {
+        const inRegion = !state.selectedRegion || fastRegionLookup(f.properties._cx, f.properties._cy) === state.selectedRegion;
+        if (!inRegion) {
+          return {
+            fillColor: "transparent",
+            fillOpacity: 0,
+            color: "transparent",
+            weight: 0,
+            opacity: 0
+          };
+        }
         const s = f.properties.coverState;
         if (s === "shared") {
           return {
@@ -1422,6 +1432,16 @@ function buildHexLayer() {
       { type: "FeatureCollection", features: hexGrid.features },
       {
         style: f => {
+          if (state.selectedRegion && !isHexInSelectedRegion(f)) {
+            return {
+              fillColor: "transparent",
+              fillOpacity: 0,
+              color: "transparent",
+              weight: 0,
+              opacity: 0
+            };
+          }
+
           const p = f.properties;
           const maxPop = state._hexMaxPop || 1;
 
@@ -1656,20 +1676,27 @@ function rebuildLocationsLayer() {
   const activeBrands = getActiveMapBrands();
   const brandSet = new Set(activeBrands);
   const cityFilter = state.selectedCity;
-  const effectiveRegionFilter = cityFilter ? state.selectedRegion || null : null;
+  const effectiveRegionFilter = state.selectedRegion || null;
   const zoom = state.map.getZoom();
 
   let feats;
-  if (cityFilter) {
-    feats = state.locationsGeojson.features.filter(f => {
-      if (!brandSet.has(f.properties.brand)) return false;
-      if (effectiveRegionFilter && f.properties.region !== effectiveRegionFilter) return false;
-      return (f.properties.city || "").trim().toLowerCase() === cityFilter.toLowerCase();
-    });
-  } else if (zoom >= 11) {
+  if (!effectiveRegionFilter && !cityFilter) {
+    feats = getPointsInBounds(state.map.getBounds().pad(0.2), brandSet, null);
+  } else if (zoom >= 11 && !effectiveRegionFilter) {
     feats = getPointsInBounds(state.map.getBounds().pad(0.05), brandSet, null);
   } else {
-    feats = getPointsInBounds(state.map.getBounds().pad(0.2), brandSet, null);
+    feats = getPointsInBounds(
+      effectiveRegionFilter ? state.map.getBounds().pad(0.1) : state.map.getBounds().pad(0.08),
+      brandSet,
+      effectiveRegionFilter
+    );
+
+    if (cityFilter) {
+      const cityFeats = feats.filter(
+        f => (f.properties.city || "").trim().toLowerCase() === cityFilter.toLowerCase()
+      );
+      if (cityFeats.length >= 1) feats = cityFeats;
+    }
   }
 
   // Always show some locations on national view
@@ -2274,6 +2301,7 @@ function renderRegionTable() {
 
   rows.forEach(r => {
     const isActive = r.region === state.selectedRegion;
+    if (state.selectedRegion && !isActive) return;
 
     html += `
       <tr class="region-row ${isActive ? "active" : ""}" data-region="${r.region}">
