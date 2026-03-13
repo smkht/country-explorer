@@ -1625,7 +1625,7 @@ function rebuildLocationsLayer() {
       onEachFeature: (feature, layer) => {
         const p = feature.properties;
         layer.bindPopup(
-          `<strong>${p.brand}</strong><br/>${p.name || ""}<br/><span style=\"color:#6b7394\">${p.city || \"\"} ${p.postcode || \"\"}</span>`
+          `<strong>${p.brand}</strong><br/>${p.name || ""}<br/><span style="color:#6b7394">${p.city || ""} ${p.postcode || ""}</span>`
         );
       }
     }
