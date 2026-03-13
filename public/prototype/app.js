@@ -2288,7 +2288,14 @@ function refreshKPIs() {
     document.querySelector("#kpiTotal + .rp-kpi-label").textContent = "Base-only pop";
     document.querySelector("#kpiRegions + .rp-kpi-label").textContent = "Compare-only pop";
     document.querySelector("#kpiDense + .rp-kpi-label").textContent = "Shared pop";
-    document.querySelector("#kpiLondonShare + .rp-kpi-label").textContent = "Coverage advantage";
+    const baseBrandName = selectedArr()[0] || 'Base';
+    const compareBrandName = state.compareBrand || 'Compare';
+    const advantageLabel = advantage > 0
+      ? `${baseBrandName.split("'")[0]} advantage`
+      : advantage < 0
+      ? `${compareBrandName.split("'")[0]} advantage`
+      : "Coverage advantage";
+    document.querySelector("#kpiLondonShare + .rp-kpi-label").textContent = advantageLabel;
     return;
   }
 
