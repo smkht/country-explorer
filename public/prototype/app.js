@@ -2491,7 +2491,8 @@ function flyToCityOrData(cityName, region) {
 }
 
 function refreshCompareTab() {
-  const selected = selectedArr();
+  const activeBrands = getActiveMapBrands();
+  const selected = activeBrands;
   const region = state.selectedRegion;
   const city = state.selectedCity;
   const regionLabel = region ? region.replace(" (England)", "") : null;
@@ -2570,7 +2571,7 @@ function refreshCompareTab() {
   `;
 
   // ── Market Share Bars ──
-  const maxTotal = Math.max(...rows.map(r => r.total));
+  const maxTotal = Math.max(...rows.map(r => r.total), 0);
   document.getElementById("compareShareBars").innerHTML = rows.map(r => {
     const pct = maxTotal > 0 ? (r.total / maxTotal * 100) : 0;
     return `<div class="share-bar-row">
@@ -2660,7 +2661,7 @@ function refreshCompareTab() {
     document.getElementById("compareMatrix").innerHTML = `
       ${cityNotice2}
       <table class="table">
-        <tr><th>City</th>${selected.map(b => `<th><span style="color:${BRAND_COLORS[b]||'#3B5BFE'}">${b.split("'")[0]}</span></th>`).join("")}<th>Total</th></tr>
+        <tr><th>City</th>${selected.map(b => `<th><span style="color:${BRAND_COLORS[b] || '#3B5BFE'}">${b.split("'")[0]}</span></th>`).join("")}<th>Total</th></tr>
         ${cityRows.join("")}
       </table>
     `;
