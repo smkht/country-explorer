@@ -2786,7 +2786,7 @@ function refreshCompareRegionDeep(rows, scopeType, region, regionLabel, city) {
     document.getElementById("compareRegionDeepTitle").textContent = `📍 Deep Dive — ${regionLabel}`;
   }
 
-  const selected = selectedArr();
+  const selected = getActiveMapBrands();
   if (scopeType === "city") {
     const regionTotalAll = selected.reduce((s, b) => s + ((state.metrics.region_brand_counts[region] || {})[b] || 0), 0);
     const totalInCity = rows.reduce((s, r) => s + r.total, 0);
