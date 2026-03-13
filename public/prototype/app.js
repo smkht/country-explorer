@@ -403,17 +403,6 @@ function buildBrandList() {
     wrap.appendChild(el);
   });
 
-  const allEl = document.createElement("div");
-  allEl.className = "brand-pill active";
-  allEl.id = "brandAllPill";
-  allEl.innerHTML = `
-    <span class="brand-dot" style="background:linear-gradient(135deg,#3B5BFE,#22C1F1)"></span>
-    <span class="brand-name">All</span>
-    <span class="brand-count" data-brand="__all__">${fmtInt(Object.values(state.metrics.brand_totals).reduce((a, b) => a + b, 0))}</span>
-  `;
-  allEl.onclick = () => setAllBrands(state.metrics.brands);
-  wrap.appendChild(allEl);
-
   updateComparePillsState();
 }
 
@@ -1922,6 +1911,19 @@ function setupDropdownListeners() {
       scheduleRefreshAfterMove();
     });
   }
+
+  const resetMapBtn = document.getElementById("resetMapBtn");
+  if (resetMapBtn) {
+    resetMapBtn.addEventListener("click", () => {
+      state.selectedRegion = null;
+      state.selectedCity = null;
+      const rs = document.getElementById("regionSelect");
+      if (rs) rs.value = "";
+      buildCitySelect(null);
+      setAllBrands(state.metrics.brands);
+      flyToRegion(null);
+    });
+  }
 }
 
 function refreshAll() {
@@ -2281,15 +2283,18 @@ function refreshKPIs() {
     advantageEl.textContent = advantageText;
     advantageEl.style.color = advantage > 0 ? "#43A047" : advantage < 0 ? "#E53935" : "";
 
+    const baseBrandName = selectedArr()[0] || 'Base';
+    const compareBrandName = state.compareBrand || 'Compare';
+    const baseStores = state.metrics.brand_totals[baseBrandName] || 0;
+    const compareStores = state.metrics.brand_totals[compareBrandName] || 0;
+
     document.getElementById("kpiTotal").textContent = baseOnly ? fmtInt(Math.round(baseOnly)) : "—";
     document.getElementById("kpiRegions").textContent = compareOnly ? fmtInt(Math.round(compareOnly)) : "—";
     document.getElementById("kpiDense").textContent = shared ? fmtInt(Math.round(shared)) : "—";
 
-    document.querySelector("#kpiTotal + .rp-kpi-label").textContent = "Base-only pop";
-    document.querySelector("#kpiRegions + .rp-kpi-label").textContent = "Compare-only pop";
-    document.querySelector("#kpiDense + .rp-kpi-label").textContent = "Shared pop";
-    const baseBrandName = selectedArr()[0] || 'Base';
-    const compareBrandName = state.compareBrand || 'Compare';
+    document.querySelector("#kpiTotal + .rp-kpi-label").textContent = `${baseBrandName.split("'")[0]} · ${fmtInt(baseStores)} stores`;
+    document.querySelector("#kpiRegions + .rp-kpi-label").textContent = `${compareBrandName.split("'")[0]} · ${fmtInt(compareStores)} stores`;
+    document.querySelector("#kpiDense + .rp-kpi-label").textContent = "Shared coverage";
     const advantageLabel = advantage > 0
       ? `${baseBrandName.split("'")[0]} advantage`
       : advantage < 0
@@ -2435,20 +2440,23 @@ function renderRegionTable() {
     const coveragePct = population > 0 ? (hexSummary.coveredPop / population) : 0;
     const efficiency = total > 0 ? (hexSummary.coveredPop / total) : null;
 
-    let compareLocs = 0, compareCoveredPop = null, gap = null;
+    // Use same formula for both brands so GAP is apples-to-apples
+    let compareLocs = 0, compareCoveredPop = null, baseCoveredPop = null, gap = null;
     if (compareMode && compareBrand) {
       compareLocs = counts[compareBrand] || 0;
-      const totalForDensity = total + compareLocs || 1;
-      const density = areaKm2 > 0 ? compareLocs / (areaKm2 / 1000) : 0;
-      const cm = computeCoverageMetrics(compareLocs, areaKm2, population, compareLocs > 0 ? 1 : 0, density, { [compareBrand]: compareLocs });
-      compareCoveredPop = cm.coveredPop || 0;
-      gap = (hexSummary.coveredPop || 0) - compareCoveredPop;
+      const baseDensity = areaKm2 > 0 ? total / (areaKm2 / 1000) : 0;
+      const compareDensity = areaKm2 > 0 ? compareLocs / (areaKm2 / 1000) : 0;
+      const baseCm = computeCoverageMetrics(total, areaKm2, population, total > 0 ? 1 : 0, baseDensity, total > 0 ? { [baseBrand]: total } : {});
+      const compareCm = computeCoverageMetrics(compareLocs, areaKm2, population, compareLocs > 0 ? 1 : 0, compareDensity, { [compareBrand]: compareLocs });
+      baseCoveredPop = baseCm.coveredPop || 0;
+      compareCoveredPop = compareCm.coveredPop || 0;
+      gap = baseCoveredPop - compareCoveredPop;
     }
 
     return {
       region, total, coveredPop: hexSummary.coveredPop, coveragePct,
       coveredHexes: hexSummary.coveredHexes, efficiency,
-      compareLocs, compareCoveredPop, gap
+      compareLocs, baseCoveredPop, compareCoveredPop, gap
     };
   });
 
@@ -2488,7 +2496,7 @@ function renderRegionTable() {
           <td><strong>${regionLabel}</strong></td>
           <td class="num">${fmtInt(r.total)}</td>
           <td class="num">${fmtInt(r.compareLocs)}</td>
-          <td class="num">${r.coveredPop ? fmtInt(Math.round(r.coveredPop)) : "—"}</td>
+          <td class="num">${r.baseCoveredPop != null ? fmtInt(Math.round(r.baseCoveredPop)) : "—"}</td>
           <td class="num">${r.compareCoveredPop != null ? fmtInt(Math.round(r.compareCoveredPop)) : "—"}</td>
           <td class="num" style="color:${gapColor}">${gapText}</td>
         </tr>
@@ -2506,6 +2514,64 @@ function renderRegionTable() {
       `;
     }
 
+    // City accordion — shown when region is selected
+    if (isActive) {
+      const cityRows = buildCityRowsForRegion(r.region);
+      const mapBrands = getActiveMapBrands();
+      const colspan = compareMode ? 6 : 6;
+
+      if (mapBrands.length === 2) {
+        const [b1, b2] = mapBrands;
+        html += `
+          <tr class="region-accordion"><td colspan="${colspan}">
+            <table class="table">
+              <tr>
+                <th>City</th>
+                <th class="num">${b1.split("'")[0]} Locs</th>
+                <th class="num">${b2.split("'")[0]} Locs</th>
+                <th class="num">Gap (pop)</th>
+              </tr>
+              ${cityRows.slice(0, 25).map(c => {
+                const l1 = safeBrandValue(c.brandCounts, b1);
+                const l2 = safeBrandValue(c.brandCounts, b2);
+                const cityPop = c.approxPop || 0;
+                const cityArea = c.approxArea || 0;
+                const cm1 = computeCoverageMetrics(l1, cityArea, cityPop, l1>0?1:0, cityArea>0?l1/(cityArea/1000):0, l1>0?{[b1]:l1}:{});
+                const cm2 = computeCoverageMetrics(l2, cityArea, cityPop, l2>0?1:0, cityArea>0?l2/(cityArea/1000):0, l2>0?{[b2]:l2}:{});
+                const gap = (cm1.coveredPop||0) - (cm2.coveredPop||0);
+                const gc = gap > 0 ? "#43A047" : gap < 0 ? "#E53935" : "var(--muted)";
+                return `
+                  <tr class="city-row ${c.city === state.selectedCity ? 'active' : ''}" data-city="${c.city}" data-region="${r.region}">
+                    <td>${c.city}</td>
+                    <td class="num">${fmtInt(l1)}</td>
+                    <td class="num">${fmtInt(l2)}</td>
+                    <td class="num" style="color:${gc}">${gap===0?"—":`${gap>0?"+":""}${fmtInt(Math.round(gap))}`}</td>
+                  </tr>`;
+              }).join("")}
+            </table>
+          </td></tr>`;
+      } else {
+        const brand = mapBrands[0] || '';
+        html += `
+          <tr class="region-accordion"><td colspan="${colspan}">
+            <table class="table">
+              <tr>
+                <th>City</th>
+                <th class="num">Locations</th>
+                <th class="num">Covered Pop</th>
+                <th class="num">Coverage %</th>
+              </tr>
+              ${cityRows.slice(0, 25).map(c => `
+                <tr class="city-row ${c.city === state.selectedCity ? 'active' : ''}" data-city="${c.city}" data-region="${r.region}">
+                  <td>${c.city}</td>
+                  <td class="num">${fmtInt(brand ? safeBrandValue(c.brandCounts, brand) : c.total)}</td>
+                  <td class="num">${c.coveredPop ? fmtInt(Math.round(c.coveredPop)) : "—"}</td>
+                  <td class="num">${c.coveragePct ? fmtPct(c.coveragePct) : "—"}</td>
+                </tr>`).join("")}
+            </table>
+          </td></tr>`;
+      }
+    }
 
   });
 
@@ -2518,6 +2584,17 @@ function renderRegionTable() {
       state.selectedCity = null;
       flyToRegion(state.selectedRegion);
       refreshAll();
+    };
+  });
+
+  document.querySelectorAll(".city-row").forEach(row => {
+    row.onclick = () => {
+      const city = row.dataset.city;
+      const region = row.dataset.region;
+      state.selectedRegion = region;
+      state.selectedCity = city;
+      flyToCityOrData(city, region);
+      scheduleRefreshAfterMove();
     };
   });
 

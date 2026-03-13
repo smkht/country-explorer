@@ -151,9 +151,13 @@ body { font-family: var(--sans); background: var(--bg); color: var(--text); -web
 .toggle-switch input:checked + .toggle-slider { background: var(--accent-light); border-color: var(--accent); }
 .toggle-switch input:checked + .toggle-slider::before { transform: translateX(16px); background: var(--accent); }
 
+/* ── Reset map button ── */
+.reset-map-btn { width: 100%; padding: 7px 12px; background: var(--panel2); border: 1px solid var(--border); border-radius: 8px; cursor: pointer; font-size: 12px; font-weight: 700; color: var(--fg); transition: all 0.12s; text-align: left; }
+.reset-map-btn:hover { background: rgba(59,91,254,0.08); border-color: rgba(59,91,254,0.35); color: #3B5BFE; }
+
 /* ── Brand list ── */
 .brand-list { display: flex; flex-wrap: wrap; gap: 8px; }
-#brandsSection { margin-top: 12px; }
+#brandsSection { margin-top: 4px; }
 .brand-pill { display: inline-flex; align-items: center; gap: 8px; padding: 6px 12px; border-radius: 999px; cursor: pointer; transition: all 0.12s; user-select: none; background: var(--panel2); border: 1px solid var(--border); }
 .brand-pill:hover { background: rgba(59,91,254,0.08); border-color: rgba(59,91,254,0.35); }
 .brand-pill.inactive { opacity: 0.45; }
