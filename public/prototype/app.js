@@ -318,10 +318,16 @@ function hexStrokeHeatmap(ratio) {
   return `rgba(76,175,80,${0.2 + 0.15 * ((t - 0.5) * 2)})`;
 }
 
-function cellSizeForZoom(zoom) {
-  const focused = !!state.selectedRegion;
+function getMapScope() {
+  if (state.selectedCity) return "city";
+  if (state.selectedRegion) return "region";
+  return "country";
+}
 
-  if (focused) {
+function cellSizeForZoom(zoom) {
+  const scope = getMapScope();
+
+  if (scope === "city") {
     if (zoom >= 14) return 0.35;
     if (zoom >= 13) return 0.55;
     if (zoom >= 12) return 0.8;
@@ -332,15 +338,11 @@ function cellSizeForZoom(zoom) {
     return 6;
   }
 
-  if (zoom >= 14) return 0.6;
-  if (zoom >= 13) return 0.9;
-  if (zoom >= 12) return 1.2;
-  if (zoom >= 11) return 1.8;
-  if (zoom >= 10) return 2.5;
-  if (zoom >= 9) return 4;
-  if (zoom >= 8) return 6;
-  if (zoom >= 7) return 12;
-  return 18;
+  if (scope === "region") {
+    return zoom >= 11 ? 1.2 : 1.6;
+  }
+
+  return zoom >= 8 ? 7 : 8.5;
 }
 
 // ── Country handling ──
@@ -515,9 +517,7 @@ function buildComparePills() {
       if (el.classList.contains("disabled")) return;
       state.compareBrand = brand;
       updateComparePillsState();
-      buildHexLayer();
-      rebuildLocationsLayer();
-      updateLegend();
+      refreshAll();
     };
     wrap.appendChild(el);
   });
@@ -847,27 +847,67 @@ function buildRegionGrid() {
   if (_regionGridCache) return _regionGridCache;
   const step = 0.1; // ~11km resolution
   const grid = {};
-  // Sample points across England bounding box
+  const regions = state.regionsGeojson.features.map(feature => {
+    const bbox = turf.bbox(feature);
+    return {
+      feature,
+      name: feature.properties.rgn24nm || feature.properties.name || '',
+      bbox
+    };
+  });
+
   for (let lat = 49.5; lat <= 56; lat += step) {
     for (let lon = -6; lon <= 2; lon += step) {
       const pt = turf.point([lon, lat]);
-      for (const region of state.regionsGeojson.features) {
-        if (turf.booleanPointInPolygon(pt, region)) {
+      for (const region of regions) {
+        const [w, s, e, n] = region.bbox;
+        if (lon < w || lon > e || lat < s || lat > n) continue;
+        if (turf.booleanPointInPolygon(pt, region.feature)) {
           const key = `${Math.floor(lon / step)},${Math.floor(lat / step)}`;
-          grid[key] = region.properties.rgn24nm || region.properties.name || '';
+          grid[key] = region.name;
           break;
         }
       }
     }
   }
-  _regionGridCache = { step, grid };
+  _regionGridCache = { step, grid, regions };
   return _regionGridCache;
 }
 
 function fastRegionLookup(lon, lat) {
   const rg = buildRegionGrid();
   const key = `${Math.floor(lon / rg.step)},${Math.floor(lat / rg.step)}`;
-  return rg.grid[key] || null;
+  if (rg.grid[key]) return rg.grid[key];
+
+  const pt = turf.point([lon, lat]);
+  for (const region of rg.regions) {
+    const [w, s, e, n] = region.bbox;
+    if (lon < w || lon > e || lat < s || lat > n) continue;
+    if (turf.booleanPointInPolygon(pt, region.feature)) return region.name;
+  }
+  return null;
+}
+
+function getRegionFeature(regionName) {
+  return state.regionsGeojson?.features?.find(f => regionNameFromFeature(f) === regionName) || null;
+}
+
+function getRegionBounds(regionName, pad = 0.08) {
+  const feature = getRegionFeature(regionName);
+  if (!feature) return null;
+  const [w, s, e, n] = turf.bbox(feature);
+  return L.latLngBounds([s, w], [n, e]).pad(pad);
+}
+
+function getScopeBounds(pad = 0.12) {
+  if (state.selectedCity && state.map) {
+    return state.map.getBounds().pad(pad);
+  }
+  if (state.selectedRegion) {
+    return getRegionBounds(state.selectedRegion, Math.max(0.08, pad));
+  }
+  const englandBounds = getEnglandBounds();
+  return englandBounds ? englandBounds.pad(Math.max(0.06, pad)) : state.map.getBounds().pad(pad);
 }
 
 // Fast population estimate using cached region lookup (no turf calls per hex)
@@ -1328,8 +1368,8 @@ function buildHexLayer() {
     state.compareHexLayer = null;
   }
 
-  const countryView = !state.selectedRegion && !state.selectedCity && zoom <= 8.5;
-  const bounds = countryView ? (getEnglandBounds() || state.map.getBounds()) : state.map.getBounds().pad(0.15);
+  const countryView = !state.selectedRegion && !state.selectedCity;
+  const bounds = getScopeBounds(countryView ? 0.08 : 0.12);
   const bbox = [bounds.getWest(), bounds.getSouth(), bounds.getEast(), bounds.getNorth()];
   const brandFilter = new Set(activeBrands);
   const locations = getPointsInBounds(bounds, brandFilter, null);
@@ -1584,17 +1624,19 @@ function buildHexLayer() {
 function updateLegend() {
   const title = document.getElementById("legendTitle");
   const scale = document.getElementById("legendScale");
+  if (!title || !scale) return;
 
   if (isCoverageCompareMode()) {
     title.textContent = `${selectedArr()[0]} vs ${state.compareBrand}`;
     scale.innerHTML = `
-      <span class="legend-block" style="background:${COMPARE_LAYER_STYLE.compareOnlyFill}"></span><span>Compare only</span>
+      <span class="legend-block" style="background:${COMPARE_LAYER_STYLE.noCoverageFill}"></span><span>No coverage</span>
+      <span class="legend-block" style="background:${COMPARE_LAYER_STYLE.compareOnlyFill}"></span><span>${state.compareBrand} only</span>
       <span class="legend-block" style="background:${COMPARE_LAYER_STYLE.sharedFill}"></span><span>Shared</span>
       <span class="legend-block" style="background:hsla(230,85%,92%,0.5)"></span>
       <span class="legend-block" style="background:hsla(230,85%,80%,0.6)"></span>
       <span class="legend-block" style="background:hsla(230,88%,68%,0.7)"></span>
       <span class="legend-block" style="background:hsla(230,90%,56%,0.75)"></span>
-      <span class="legend-block" style="background:hsla(230,95%,38%,0.85)"></span><span>Base coverage</span>
+      <span class="legend-block" style="background:hsla(230,95%,38%,0.85)"></span><span>${selectedArr()[0]} intensity</span>
     `;
     return;
   }
@@ -1602,11 +1644,11 @@ function updateLegend() {
   if (state.heatmapMode) {
     title.textContent = `${state.primaryBrand} vs competitors`;
     scale.innerHTML = `
-      <span class="legend-block" style="background:#E53935"></span>
+      <span class="legend-block" style="background:#E53935"></span><span>Competitor-led</span>
       <span class="legend-block" style="background:#FF9800"></span>
-      <span class="legend-block" style="background:#FFEB3B"></span>
+      <span class="legend-block" style="background:#FFEB3B"></span><span>Balanced</span>
       <span class="legend-block" style="background:#8BC34A"></span>
-      <span class="legend-block" style="background:#4CAF50"></span>
+      <span class="legend-block" style="background:#4CAF50"></span><span>${state.primaryBrand} led</span>
     `;
     return;
   }
@@ -1617,11 +1659,12 @@ function updateLegend() {
   else title.textContent = "Coverage %";
 
   scale.innerHTML = `
+    <span class="legend-block" style="background:${COMPARE_LAYER_STYLE.noCoverageFill}"></span><span>No coverage</span>
     <span class="legend-block" style="background:hsla(230,85%,92%,0.5)"></span>
     <span class="legend-block" style="background:hsla(230,85%,80%,0.6)"></span>
     <span class="legend-block" style="background:hsla(230,88%,68%,0.7)"></span>
     <span class="legend-block" style="background:hsla(230,90%,56%,0.75)"></span>
-    <span class="legend-block" style="background:hsla(230,95%,38%,0.85)"></span>
+    <span class="legend-block" style="background:hsla(230,95%,38%,0.85)"></span><span>Higher coverage</span>
   `;
 }
 
@@ -1640,23 +1683,15 @@ function rebuildLocationsLayer() {
   const zoom = state.map.getZoom();
 
   let feats;
-  if (!effectiveRegionFilter && !cityFilter) {
-    feats = getPointsInBounds(state.map.getBounds().pad(0.2), brandSet, null);
-  } else if (zoom >= 11 && !effectiveRegionFilter) {
-    feats = getPointsInBounds(state.map.getBounds().pad(0.05), brandSet, null);
+  if (cityFilter) {
+    feats = state.locationsGeojson.features.filter(f => {
+      const city = (f.properties.city || "").trim().toLowerCase();
+      const regionOk = !effectiveRegionFilter || f.properties.region === effectiveRegionFilter;
+      return regionOk && brandSet.has(f.properties.brand) && city === cityFilter.toLowerCase();
+    });
   } else {
-    feats = getPointsInBounds(
-      effectiveRegionFilter ? state.map.getBounds().pad(0.1) : state.map.getBounds().pad(0.08),
-      brandSet,
-      effectiveRegionFilter
-    );
-
-    if (cityFilter) {
-      const cityFeats = feats.filter(
-        f => (f.properties.city || "").trim().toLowerCase() === cityFilter.toLowerCase()
-      );
-      if (cityFeats.length >= 1) feats = cityFeats;
-    }
+    const scopeBounds = effectiveRegionFilter ? getScopeBounds(0.08) : getScopeBounds(0.12);
+    feats = getPointsInBounds(scopeBounds, brandSet, effectiveRegionFilter);
   }
 
   // Always show some locations on national view
@@ -1743,6 +1778,10 @@ function refreshAll() {
   rebuildLocationsLayer();
   renderGreatBritainSummary();
   renderRegionTable();
+  refreshRegionPanel();
+  refreshRegionList();
+  refreshRegionalAnalytics();
+  refreshCompareTab();
 }
 
 function buildCityRowsForRegion(region) {
@@ -2418,7 +2457,7 @@ function renderRegionTable() {
       state.selectedRegion = region;
       state.selectedCity = city;
       flyToCityOrData(city, region);
-      rebuildLocationsLayer();
+      refreshAll();
     };
   });
 }
@@ -2540,7 +2579,7 @@ function refreshRegionPanel() {
       if (citySelect) citySelect.value = cityName;
       // Fly to the city — first check REGION_CITIES, then use data centroid
       flyToCityOrData(cityName, cityRegion);
-      rebuildLocationsLayer();
+      refreshAll();
     };
   });
 }
@@ -2703,7 +2742,7 @@ function refreshRegionalAnalytics() {
       const citySelect = document.getElementById("citySelect");
       if (citySelect) citySelect.value = cityName;
       flyToCityOrData(cityName, cityRegion);
-      rebuildLocationsLayer();
+      refreshAll();
     };
   });
 }
@@ -2717,10 +2756,11 @@ function flyToCityOrData(cityName, region) {
     state.map.flyTo([city.lat, city.lon], 13, { duration: 1 });
     return;
   }
-  // Fallback: find centroid from actual data points
-  const pts = state.locationsGeojson.features.filter(f =>
-    (f.properties.city || "").trim().toLowerCase() === cityName.toLowerCase()
-  );
+  const pts = state.locationsGeojson.features.filter(f => {
+    const sameCity = (f.properties.city || "").trim().toLowerCase() === cityName.toLowerCase();
+    const sameRegion = !region || f.properties.region === region;
+    return sameCity && sameRegion;
+  });
   if (pts.length > 0) {
     let latSum = 0, lonSum = 0;
     pts.forEach(f => { lonSum += f.geometry.coordinates[0]; latSum += f.geometry.coordinates[1]; });
@@ -3145,8 +3185,7 @@ function wireUI() {
       state.heatmapMode = e.target.checked;
       const heatmapSettings = document.getElementById("heatmapSettings");
       if (heatmapSettings) heatmapSettings.classList.toggle("hidden", !state.heatmapMode);
-      buildHexLayer();
-      updateLegend();
+      refreshAll();
     });
   }
 
@@ -3159,9 +3198,7 @@ function wireUI() {
         const secondary = document.getElementById("secondaryBrandSelect");
         if (secondary && state.compareBrand) secondary.value = state.compareBrand;
       }
-      buildHexLayer();
-      rebuildLocationsLayer();
-      updateLegend();
+      refreshAll();
     });
   }
 
@@ -3171,9 +3208,7 @@ function wireUI() {
       state.compareMode = e.target.value;
       const secondaryBrandRow = document.getElementById("secondaryBrandRow");
       if (secondaryBrandRow) secondaryBrandRow.classList.toggle("hidden", e.target.value !== "pick");
-      buildHexLayer();
-      rebuildLocationsLayer();
-      updateLegend();
+      refreshAll();
     });
   }
 
@@ -3182,9 +3217,7 @@ function wireUI() {
     secondaryBrandSelect.addEventListener("change", e => {
       state.secondaryBrand = e.target.value;
       state.compareBrand = e.target.value;
-      buildHexLayer();
-      rebuildLocationsLayer();
-      updateLegend();
+      refreshAll();
     });
   }
 
@@ -3203,9 +3236,7 @@ function wireUI() {
         state.compareBrand = available[0] || null;
         updateComparePillsState();
       }
-      buildHexLayer();
-      rebuildLocationsLayer();
-      updateLegend();
+      refreshAll();
     });
   }
 
@@ -3214,8 +3245,7 @@ function wireUI() {
     coverageViewSelect.value = state.coverageView;
     coverageViewSelect.addEventListener("change", e => {
       state.coverageView = e.target.value;
-      buildHexLayer();
-      updateLegend();
+      refreshAll();
     });
   }
 }
