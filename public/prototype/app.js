@@ -200,6 +200,8 @@ const state = {
   compareEnabled: false,
   compareBrand: null,
   compareHexLayer: null,
+  _blobLayer: null,
+  _compareBlobLayer: null,
   baseBrand: null,
   coverageThreshold: 0.35,
   showOnlyCovered: false,
@@ -425,6 +427,8 @@ function setAllBrands(brands) {
   const toggle = document.getElementById("compareToggle");
   if (toggle) toggle.checked = false;
   if (state.compareHexLayer) { state.compareHexLayer.remove(); state.compareHexLayer = null; }
+  if (state._blobLayer) { state._blobLayer.remove(); state._blobLayer = null; }
+  if (state._compareBlobLayer) { state._compareBlobLayer.remove(); state._compareBlobLayer = null; }
   updateComparePillsState();
   refreshAll();
 }
@@ -776,8 +780,12 @@ function initMap() {
   map.setView([ENGLAND_VIEW.lat, ENGLAND_VIEW.lon], ENGLAND_VIEW.zoom);
 
   // Custom panes for z-order: dots always on top of hex fills
-  map.createPane('hexPane').style.zIndex = 400;
-  map.createPane('comparePane').style.zIndex = 410;
+  const hexPaneEl = map.createPane('hexPane');
+  hexPaneEl.style.zIndex = 400;
+  hexPaneEl.style.mixBlendMode = 'multiply';
+  const comparePaneEl = map.createPane('comparePane');
+  comparePaneEl.style.zIndex = 410;
+  comparePaneEl.style.mixBlendMode = 'multiply';
   map.createPane('dotsPane').style.zIndex = 450;
 
   L.tileLayer('https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png', {
@@ -1352,6 +1360,10 @@ function buildCompareHexLayer(baseHexes, compareBrand, bounds, cellSize) {
     state.compareHexLayer.remove();
     state.compareHexLayer = null;
   }
+  if (state._compareBlobLayer) {
+    state._compareBlobLayer.remove();
+    state._compareBlobLayer = null;
+  }
 
   if (!isCoverageCompareMode() || !compareBrand || !state.baseBrand) return;
 
@@ -1410,68 +1422,34 @@ function buildCompareHexLayer(baseHexes, compareBrand, bounds, cellSize) {
     overlayFeatures.push(clone);
   });
 
+  // Invisible hex layer — data-only for KPI calculations (getCompareSummaryFromHexes)
   state.compareHexLayer = L.geoJSON(
     { type: "FeatureCollection", features: overlayFeatures },
     {
       pane: 'comparePane',
-      style: f => {
-        const s = f.properties.coverState;
-        if (s === "shared") {
-          return {
-            fillColor: COMPARE_LAYER_STYLE.sharedFill,
-            color: "transparent",
-            weight: 0,
-            fillOpacity: 1,
-            opacity: 1
-          };
-        }
-        if (s === "missingFromBase") {
-          return {
-            fillColor: COMPARE_LAYER_STYLE.missingFill,
-            color: "transparent",
-            weight: 0,
-            fillOpacity: 1,
-            opacity: 1
-          };
-        }
-        if (s === "compareOnly") {
-          return {
-            fillColor: COMPARE_LAYER_STYLE.compareOnlyFill,
-            color: "transparent",
-            weight: 0,
-            fillOpacity: 1,
-            opacity: 1
-          };
-        }
-        return {
-          fillColor: "transparent",
-          color: "transparent",
-          weight: 0,
-          fillOpacity: 0,
-          opacity: 0
-        };
-      },
-      onEachFeature: (feature, layer) => {
-        const p = feature.properties;
-        const stateLabel =
-          p.coverState === "shared" ? "Shared coverage" :
-          p.coverState === "missingFromBase" ? `${state.compareBrand} strength gap` :
-          p.coverState === "compareOnly" ? `${state.compareBrand} only` :
-          `${state.baseBrand} only`;
-
-        layer.bindTooltip(
-          `${stateLabel}<br>` +
-          `${state.baseBrand}: ${fmtPct(p.baseCoveragePct || 0)}<br>` +
-          `${state.compareBrand}: ${fmtPct(p.compareCoveragePct || 0)}<br>` +
-          `${state.baseBrand} pop: ~${fmtInt(Math.round(p.baseCoveredPop || 0))}<br>` +
-          `${state.compareBrand} pop: ~${fmtInt(Math.round(p.compareCoveredPop || 0))}`,
-          { sticky: true }
-        );
-      }
+      style: () => ({ fillOpacity: 0, weight: 0, color: 'transparent', opacity: 0 }),
+      interactive: false
     }
   ).addTo(state.map);
 
-  state.compareHexLayer.bringToFront();
+  // Orange blob circles for visual compare coverage
+  const compareProfile = DELIVERY_PROFILE[compareBrand] || { baseKm: 3.2 };
+  const compareRadiusM = compareProfile.baseKm * 1000;
+  const compareStores = getPointsInBounds(bounds.pad(0.15), new Set([compareBrand]), null);
+  const compareCircles = compareStores.map(f => {
+    const [lon, lat] = f.geometry.coordinates;
+    return L.circle([lat, lon], {
+      radius: compareRadiusM,
+      pane: 'comparePane',
+      fillColor: '#FF6600',
+      fillOpacity: 0.13,
+      weight: 0,
+      color: 'transparent',
+      opacity: 0,
+      interactive: false
+    });
+  });
+  state._compareBlobLayer = L.layerGroup(compareCircles).addTo(state.map);
 }
 
 // ── Honeycomb layer (optimized) ──
@@ -1483,6 +1461,14 @@ function buildHexLayer() {
   if (state.compareHexLayer) {
     state.compareHexLayer.remove();
     state.compareHexLayer = null;
+  }
+  if (state._blobLayer) {
+    state._blobLayer.remove();
+    state._blobLayer = null;
+  }
+  if (state._compareBlobLayer) {
+    state._compareBlobLayer.remove();
+    state._compareBlobLayer = null;
   }
   if (!state.map || state.country !== "england") return;
   if (!shouldShowCoverageLayer()) {
@@ -1604,43 +1590,35 @@ function buildHexLayer() {
         if ((f.properties.estPop || 0) > maxPop) maxPop = f.properties.estPop;
       });
 
+      // Invisible hex layer — data-only for KPI calculations
       state.hexLayer = L.geoJSON(
         { type: "FeatureCollection", features: coveredBaseFeatures },
         {
           pane: 'hexPane',
-          style: f => {
-            return {
-              fillColor: fillForBrandCoverage(f),
-              fillOpacity: 1,
-              weight: 0,
-              color: "transparent",
-              opacity: 1
-            };
-          },
-          onEachFeature: (feature, layer) => {
-            const p = feature.properties;
-            const pop = p.estPop || 0;
-            const popK = pop > 1000 ? (pop / 1000).toFixed(1) + "k" : pop;
-            const coveredPopText = p.coveredPop ? fmtInt(Math.round(p.coveredPop)) : "—";
-            const coverageText = p.coveragePct != null ? fmtPct(p.coveragePct) : "—";
-            const overlapText = p.overlapIndex != null ? p.overlapIndex.toFixed(2) : "—";
-            const radiusText = p.weightedRadiusKm ? `${p.weightedRadiusKm.toFixed(1)} km` : "—";
-            const confidenceText = p.confidence >= 0.75 ? "High" : p.confidence >= 0.45 ? "Medium" : "Low";
-
-            layer.bindTooltip(
-              `${baseBrand}<br>` +
-              `Pop: ~${popK}<br>` +
-              `Coverage: ${coverageText}<br>` +
-              `Covered pop: ~${coveredPopText}<br>` +
-              `Overlap: ${overlapText}<br>` +
-              `Stores contributing: ${fmtInt(p.contributingStores || 0)}<br>` +
-              `Avg radius: ${radiusText}<br>` +
-              `Confidence: ${confidenceText}`,
-              { sticky: true }
-            );
-          }
+          style: () => ({ fillOpacity: 0, weight: 0, color: 'transparent', opacity: 0 }),
+          interactive: false
         }
       ).addTo(state.map);
+
+      // Base brand blob circles — soft delivery-radius glow per store
+      const blobProfile = DELIVERY_PROFILE[baseBrand] || { baseKm: 3.2 };
+      const blobColor = BRAND_COLORS[baseBrand] || '#3B5BFE';
+      const blobRadiusM = blobProfile.baseKm * 1000;
+      const blobStores = getPointsInBounds(bounds.pad(0.15), new Set([baseBrand]), null);
+      const blobCircles = blobStores.map(f => {
+        const [lon, lat] = f.geometry.coordinates;
+        return L.circle([lat, lon], {
+          radius: blobRadiusM,
+          pane: 'hexPane',
+          fillColor: blobColor,
+          fillOpacity: 0.13,
+          weight: 0,
+          color: 'transparent',
+          opacity: 0,
+          interactive: false
+        });
+      });
+      state._blobLayer = L.layerGroup(blobCircles).addTo(state.map);
 
       if (isCoverageCompareMode() && state.compareBrand !== baseBrand) {
         buildCompareHexLayer(baseFeatures, state.compareBrand, bounds, effectiveCellSize);
@@ -1723,13 +1701,12 @@ function updateLegend() {
 
   if (isCoverageCompareMode()) {
     const baseBrand = selectedArr()[0];
+    const baseColor = BRAND_COLORS[baseBrand] || '#3B5BFE';
     title.textContent = `${baseBrand} vs ${state.compareBrand}`;
-    const baseBlocks = buildLegendBlocksForColor(brandColor(baseBrand));
     scale.innerHTML = `
-      <span class="legend-block" style="background:${COMPARE_LAYER_STYLE.compareOnlyFill}"></span><span>Compare only</span>
-      <span class="legend-block" style="background:${COMPARE_LAYER_STYLE.missingFill}"></span><span>Missing</span>
-      <span class="legend-block" style="background:${COMPARE_LAYER_STYLE.sharedFill}"></span><span>Shared</span>
-      ${baseBlocks}<span>Base coverage</span>
+      <span class="legend-block" style="background:${baseColor};opacity:0.7"></span><span>${baseBrand}</span>
+      <span class="legend-block" style="background:#FF6600;opacity:0.7"></span><span>${state.compareBrand}</span>
+      <span class="legend-block" style="background:#9B30FF;opacity:0.7"></span><span>Overlap</span>
     `;
     return;
   }
@@ -1763,33 +1740,10 @@ function rebuildLocationsLayer() {
 
   const activeBrands = getActiveMapBrands();
   const brandSet = new Set(activeBrands);
-  const cityFilter = state.selectedCity;
-  const effectiveRegionFilter = state.selectedRegion || null;
   const zoom = state.map.getZoom();
 
-  let feats;
-  if (!effectiveRegionFilter && !cityFilter) {
-    feats = getPointsInBounds(state.map.getBounds().pad(0.2), brandSet, null);
-  } else if (zoom >= 11 && !effectiveRegionFilter) {
-    feats = getPointsInBounds(state.map.getBounds().pad(0.05), brandSet, null);
-  } else {
-    feats = getPointsInBounds(
-      effectiveRegionFilter ? state.map.getBounds().pad(0.1) : state.map.getBounds().pad(0.08),
-      brandSet,
-      effectiveRegionFilter
-    );
-
-    if (cityFilter) {
-      const compareMode = isCoverageCompareMode();
-      const compareBrandLocal = compareMode ? state.compareBrand : null;
-      const cityFeats = feats.filter(f => {
-        // In compare mode, always show compare brand stores from viewport — don't filter by city name
-        if (compareBrandLocal && f.properties.brand === compareBrandLocal) return true;
-        return (f.properties.city || "").trim().toLowerCase() === cityFilter.toLowerCase();
-      });
-      if (cityFeats.length >= 1) feats = cityFeats;
-    }
-  }
+  // Always show all stores in viewport — no region filter so dots stay visible while panning
+  const feats = getPointsInBounds(state.map.getBounds().pad(0.2), brandSet, null);
 
   // Always show some locations on national view
   if (feats.length === 0) return;
@@ -1821,12 +1775,14 @@ function rebuildLocationsLayer() {
         const isCompare = compareBrand && brand === compareBrand;
 
         const isHighlighted = isCompareMode && (isBase || isCompare);
+        // In compare mode: compare brand dots are orange, base brand stays brand color
+        const dotColor = (isCompareMode && isCompare) ? '#FF6600' : (BRAND_COLORS[brand] || "#3B5BFE");
         return L.circleMarker(latlng, {
           radius: isHighlighted ? dotRadius + 2 : dotRadius,
           weight: isHighlighted ? 2.5 : dotWeight,
-          color: isHighlighted ? "#fff" : "#fff",
+          color: "#fff",
           opacity: 1,
-          fillColor: BRAND_COLORS[brand] || "#3B5BFE",
+          fillColor: dotColor,
           fillOpacity: isHighlighted ? 1 : (zoom >= 11 ? 0.9 : 0.75),
           className:
             isBase ? "marker-base" :
@@ -2459,7 +2415,6 @@ function renderRegionTable() {
 
   rows.forEach(r => {
     const isActive = r.region === state.selectedRegion;
-    if (state.selectedRegion && !isActive) return;
 
     html += `
       <tr class="region-row ${isActive ? "active" : ""}" data-region="${r.region}">
